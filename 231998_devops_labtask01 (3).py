@@ -340,3 +340,4 @@ plt.close()
 
 print("\nAll 6 charts have been saved successfully as PNG files.")
 print("\nPROJECT COMPLETE.")
+print("\n random forest model accuracy is: ", rf_test_acc)
