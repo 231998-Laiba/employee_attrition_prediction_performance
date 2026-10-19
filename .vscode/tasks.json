@@ -1,0 +1,8 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "1 - Flask API", "type": "shell", "command": ".\\.venv\\Scripts\\python.exe backend\\app.py", "isBackground": true, "problemMatcher": [] },
+    { "label": "2 - Angular", "type": "shell", "command": "npm start", "options": { "cwd": "${workspaceFolder}/frontend" }, "isBackground": true, "problemMatcher": [] },
+    { "label": "Run all tests", "type": "shell", "command": ".\\.venv\\Scripts\\python.exe -m pytest -q backend\\tests", "problemMatcher": [] }
+  ]
+}

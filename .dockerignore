@@ -1,0 +1,4 @@
+.venv
+frontend
+.git
+**/__pycache__
