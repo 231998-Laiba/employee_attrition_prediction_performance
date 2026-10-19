@@ -1,0 +1,171 @@
+<header class="masthead">
+  <div class="masthead-inner">
+    <div>
+      <h1>Attrition Risk Console</h1>
+      <p class="lede">Enter an employee profile and see how likely they are to leave, and which factors push that estimate up or down.</p>
+    </div>
+    @if (report(); as r) {
+      <dl class="vitals" aria-label="Model summary">
+        <div><dt>Model</dt><dd>{{ r.champion }}</dd></div>
+        <div><dt>Test ROC-AUC</dt><dd>{{ r.models[r.champion].roc_auc | number:'1.2-2' }}</dd></div>
+        <div><dt>Trained on</dt><dd>{{ r.dataset.train_rows }} employees</dd></div>
+      </dl>
+    }
+  </div>
+</header>
+
+@if (deployedStatic) {
+  <aside class="notice" role="note">
+    <strong>Static demo.</strong> This page is hosted on GitHub Pages, which serves files only. The Flask model runs on a local machine,
+    so the prediction button is switched off here. The model card below is fully live.
+  </aside>
+}
+
+<main class="console">
+  <aside class="readout" aria-live="polite" aria-label="Prediction result">
+    <svg viewBox="-14 -4 268 150" class="gauge" role="img"
+         [attr.aria-label]="result() ? 'Attrition probability ' + pct(result()!.probability_leave) + ' percent' : 'Attrition gauge, no prediction yet'">
+      <path d="M 22 120 A 98 98 0 0 1 218 120" class="track" />
+      @for (s of segments; track s.label) {
+        <path [attr.d]="s.d" [attr.stroke]="s.color" class="seg" [class.dim]="result() && result()!.risk_level !== s.label" />
+      }
+      @for (t of ticks; track t.text) {
+        <line [attr.x1]="t.x1" [attr.y1]="t.y1" [attr.x2]="t.x2" [attr.y2]="t.y2" class="tick" />
+        <text [attr.x]="t.tx" [attr.y]="t.ty" class="tick-label" text-anchor="middle">{{ t.text }}</text>
+      }
+      <g class="needle" [style.transform]="'rotate(' + needle() + 'deg)'" [class.idle]="!result()">
+        <line x1="120" y1="120" x2="120" y2="38" />
+        <circle cx="120" cy="120" r="7" />
+      </g>
+    </svg>
+
+    @if (result(); as r) {
+      <div class="verdict" [attr.data-level]="r.risk_level">
+        <p class="big">{{ pct(r.probability_leave) }}<span>%</span></p>
+        <p class="level">{{ r.risk_level }} risk of leaving</p>
+        <p class="advice">{{ advice(r.risk_level) }}</p>
+      </div>
+
+      <section class="drivers">
+        <h2>What moved this estimate</h2>
+        <p class="hint">Each bar shows how many percentage points the risk would change if that factor were typical.</p>
+        <ul>
+          @for (d of r.drivers; track d.feature) {
+            <li>
+              <span class="name">{{ d.label }} <em>{{ d.value }}</em></span>
+              <span class="bar-wrap" [attr.aria-label]="d.direction">
+                <span class="bar" [class.up]="d.impact > 0" [class.down]="d.impact < 0"
+                      [style.width.%]="(100 * (d.impact < 0 ? -d.impact : d.impact)) / maxImpact()"></span>
+              </span>
+              <span class="num">{{ d.impact > 0 ? '+' : '' }}{{ d.impact * 100 | number:'1.0-0' }} pts</span>
+            </li>
+          }
+        </ul>
+      </section>
+      <p class="meta">{{ r.model }} v{{ r.model_version }}, answered in {{ r.latency_ms }} ms</p>
+      <p class="disclaimer">{{ r.disclaimer }}</p>
+    } @else if (loading()) {
+      <p class="placeholder">Running the model…</p>
+    } @else {
+      <p class="placeholder">
+        @if (deployedStatic) { Predictions need the local Flask API. }
+        @else { Fill in the profile, or load an example, then run the prediction. }
+      </p>
+    }
+  </aside>
+
+  <form class="profile" (submit)="$event.preventDefault(); submit()" novalidate>
+    <div class="toolbar">
+      <div class="progress" role="status">
+        <span class="count">{{ filled() }} of {{ fields.length }}</span> fields complete
+        <span class="meter"><span [style.width.%]="(100 * filled()) / fields.length"></span></span>
+      </div>
+      <div class="presets">
+        <button type="button" class="ghost" (click)="load('low_risk')">Load low-risk example</button>
+        <button type="button" class="ghost" (click)="load('high_risk')">Load high-risk example</button>
+        <button type="button" class="ghost" (click)="clear()">Clear</button>
+      </div>
+    </div>
+
+    @for (g of groups; track g.name) {
+      <fieldset>
+        <legend>{{ g.name }}</legend>
+        <div class="grid">
+          @for (f of g.fields; track f.name) {
+            <label>
+              <span class="lab">{{ f.label }}@if (f.unit) { <small>{{ f.unit }}</small> }</span>
+              @if (f.kind === 'number') {
+                <input type="number" step="any" inputmode="decimal" [name]="f.name"
+                       [attr.min]="f.min" [attr.max]="f.max" [required]="f.required"
+                       [value]="values()[f.name] ?? ''" (input)="set(f, $any($event.target).value)" />
+              } @else {
+                <select [name]="f.name" [required]="f.required" (change)="set(f, $any($event.target).value)">
+                  <option value="" [selected]="values()[f.name] === null">Select…</option>
+                  @for (o of f.options ?? []; track o.value) {
+                    <option [value]="o.value" [selected]="isSelected(f, o.value)">{{ o.label }}</option>
+                  }
+                </select>
+              }
+            </label>
+          }
+        </div>
+      </fieldset>
+    }
+
+    @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
+
+    <div class="submit-row">
+      <button type="submit" class="primary" [disabled]="loading() || deployedStatic">
+        {{ loading() ? 'Predicting…' : 'Run local prediction' }}
+      </button>
+      <span class="small">Sent to Flask <code>POST /predict</code> through the dev proxy.</span>
+    </div>
+  </form>
+</main>
+
+@if (report(); as r) {
+  <section class="modelcard" aria-labelledby="mc-title">
+    <h2 id="mc-title">Model card</h2>
+    <p class="lede">
+      {{ r.dataset.rows }} employees sampled from the IBM HR dataset ({{ r.dataset.left }} left, {{ r.dataset.stayed }} stayed),
+      split {{ r.dataset.train_rows }} / {{ r.dataset.test_rows }} for training and testing. Both models are full scikit-learn pipelines,
+      tuned with 5-fold cross-validation. The champion is chosen on cross-validation, never on the test set.
+    </p>
+
+    <div class="mc-grid">
+      <div class="table-scroll">
+        <table>
+          <caption class="sr">Model comparison on the held-out test set</caption>
+          <thead><tr><th scope="col">Metric</th>@for (m of models(); track m[0]) { <th scope="col" [class.champ]="m[0] === r.champion">{{ m[0] }}@if (m[0] === r.champion) { <small>champion</small> }</th> }</tr></thead>
+          <tbody>
+            <tr><th scope="row">Accuracy</th>@for (m of models(); track m[0]) { <td>{{ m[1].accuracy | number:'1.3-3' }}</td> }</tr>
+            <tr><th scope="row">ROC-AUC</th>@for (m of models(); track m[0]) { <td>{{ m[1].roc_auc | number:'1.3-3' }}</td> }</tr>
+            <tr><th scope="row">CV ROC-AUC</th>@for (m of models(); track m[0]) { <td>{{ m[1].cv_roc_auc | number:'1.3-3' }}</td> }</tr>
+            <tr><th scope="row">F1 (weighted)</th>@for (m of models(); track m[0]) { <td>{{ m[1].f1_weighted | number:'1.3-3' }}</td> }</tr>
+            <tr><th scope="row">Leavers caught (recall)</th>@for (m of models(); track m[0]) { <td>{{ m[1].recall_left | number:'1.3-3' }}</td> }</tr>
+            <tr><th scope="row">Leaver precision</th>@for (m of models(); track m[0]) { <td>{{ m[1].precision_left | number:'1.3-3' }}</td> }</tr>
+            <tr><th scope="row">Train minus test accuracy</th>@for (m of models(); track m[0]) { <td>{{ m[1].overfit_gap | number:'1.3-3' }}</td> }</tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="importance">
+        <h3>Strongest drivers across all employees</h3>
+        <ol>
+          @for (f of r.top_features; track f.feature) {
+            <li>
+              <span class="name">{{ f.label }}</span>
+              <span class="bar-wrap"><span class="bar up" [style.width.%]="(100 * f.importance) / maxImportance()"></span></span>
+              <span class="num">{{ f.importance * 100 | number:'1.0-0' }}%</span>
+            </li>
+          }
+        </ol>
+        <p class="small">Permutation importance on the test set, grouped by raw feature.</p>
+      </div>
+    </div>
+  </section>
+}
+
+<footer class="foot">
+  Angular, Flask and scikit-learn. Tested and deployed with GitHub Actions. Educational prototype, not for real HR decisions.
+</footer>

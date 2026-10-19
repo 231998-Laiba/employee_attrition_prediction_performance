@@ -1,0 +1,20 @@
+:root {
+  --ink: #14232b; --ink-2: #4a5b64; --paper: #f2f5f3; --panel: #ffffff; --line: #d5ddd9;
+  --teal: #1f6f78; --teal-dark: #164f56; --amber: #d9962f; --risk: #b83a2e; --stay: #3c8d5a;
+  --focus: #0b57d0;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --ink: #e7efec; --ink-2: #a5b6bd; --paper: #0f1a1f; --panel: #16262d; --line: #2a3d46;
+    --teal: #58b4bd; --teal-dark: #8fd3da; --amber: #e8b04f; --risk: #e5695b; --stay: #62b982; --focus: #7aa7ff;
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-padding-top: 12px; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font: 400 16px/1.55 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+h1, h2, h3 { font-family: 'Bricolage Grotesque', 'IBM Plex Sans', system-ui, sans-serif; letter-spacing: -0.015em; line-height: 1.12; margin: 0; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
