@@ -3,6 +3,7 @@ import { DecimalPipe } from '@angular/common';
 import { FEATURES, SAMPLES, Feature } from './feature-schema';
 import { PredictionService, PredictionResponse, ModelReport } from './prediction.service';
 
+
 type Seg = { d: string; color: string; label: string };
 const CX = 120, CY = 120, R = 98;
 const point = (f: number, r = R) => ({
@@ -128,3 +129,4 @@ export class App implements OnInit {
         : 'Profile resembles employees who stay. Keep monitoring through normal reviews.';
   }
 }
+

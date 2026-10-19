@@ -13,14 +13,14 @@
     }
   </div>
 </header>
-
+ 
 @if (deployedStatic) {
   <aside class="notice" role="note">
     <strong>Static demo.</strong> This page is hosted on GitHub Pages, which serves files only. The Flask model runs on a local machine,
     so the prediction button is switched off here. The model card below is fully live.
   </aside>
 }
-
+ 
 <main class="console">
   <aside class="readout" aria-live="polite" aria-label="Prediction result">
     <svg viewBox="-14 -4 268 150" class="gauge" role="img"
@@ -38,14 +38,14 @@
         <circle cx="120" cy="120" r="7" />
       </g>
     </svg>
-
+ 
     @if (result(); as r) {
       <div class="verdict" [attr.data-level]="r.risk_level">
         <p class="big">{{ pct(r.probability_leave) }}<span>%</span></p>
         <p class="level">{{ r.risk_level }} risk of leaving</p>
         <p class="advice">{{ advice(r.risk_level) }}</p>
       </div>
-
+ 
       <section class="drivers">
         <h2>What moved this estimate</h2>
         <p class="hint">Each bar shows how many percentage points the risk would change if that factor were typical.</p>
@@ -53,11 +53,11 @@
           @for (d of r.drivers; track d.feature) {
             <li>
               <span class="name">{{ d.label }} <em>{{ d.value }}</em></span>
-              <span class="bar-wrap" [attr.aria-label]="d.direction">
+              <span class="bar-wrap" role="img" [attr.aria-label]="d.direction">
                 <span class="bar" [class.up]="d.impact > 0" [class.down]="d.impact < 0"
                       [style.width.%]="(100 * (d.impact < 0 ? -d.impact : d.impact)) / maxImpact()"></span>
               </span>
-              <span class="num">{{ d.impact > 0 ? '+' : '' }}{{ d.impact * 100 | number:'1.0-0' }} pts</span>
+              <span class="num">{{ d.impact > 0 ? '+' : '' }}{{ (d.impact * 100) | number:'1.0-0' }} pts</span>
             </li>
           }
         </ul>
@@ -73,7 +73,7 @@
       </p>
     }
   </aside>
-
+ 
   <form class="profile" (submit)="$event.preventDefault(); submit()" novalidate>
     <div class="toolbar">
       <div class="progress" role="status">
@@ -86,7 +86,7 @@
         <button type="button" class="ghost" (click)="clear()">Clear</button>
       </div>
     </div>
-
+ 
     @for (g of groups; track g.name) {
       <fieldset>
         <legend>{{ g.name }}</legend>
@@ -111,9 +111,9 @@
         </div>
       </fieldset>
     }
-
+ 
     @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
-
+ 
     <div class="submit-row">
       <button type="submit" class="primary" [disabled]="loading() || deployedStatic">
         {{ loading() ? 'Predicting…' : 'Run local prediction' }}
@@ -122,7 +122,7 @@
     </div>
   </form>
 </main>
-
+ 
 @if (report(); as r) {
   <section class="modelcard" aria-labelledby="mc-title">
     <h2 id="mc-title">Model card</h2>
@@ -131,12 +131,19 @@
       split {{ r.dataset.train_rows }} / {{ r.dataset.test_rows }} for training and testing. Both models are full scikit-learn pipelines,
       tuned with 5-fold cross-validation. The champion is chosen on cross-validation, never on the test set.
     </p>
-
+ 
     <div class="mc-grid">
       <div class="table-scroll">
         <table>
           <caption class="sr">Model comparison on the held-out test set</caption>
-          <thead><tr><th scope="col">Metric</th>@for (m of models(); track m[0]) { <th scope="col" [class.champ]="m[0] === r.champion">{{ m[0] }}@if (m[0] === r.champion) { <small>champion</small> }</th> }</tr></thead>
+          <thead>
+            <tr>
+              <th scope="col">Metric</th>
+              @for (m of models(); track m[0]) {
+                <th scope="col" [class.champ]="m[0] === r.champion">{{ m[0] }}@if (m[0] === r.champion) { <small>champion</small> }</th>
+              }
+            </tr>
+          </thead>
           <tbody>
             <tr><th scope="row">Accuracy</th>@for (m of models(); track m[0]) { <td>{{ m[1].accuracy | number:'1.3-3' }}</td> }</tr>
             <tr><th scope="row">ROC-AUC</th>@for (m of models(); track m[0]) { <td>{{ m[1].roc_auc | number:'1.3-3' }}</td> }</tr>
@@ -148,7 +155,7 @@
           </tbody>
         </table>
       </div>
-
+ 
       <div class="importance">
         <h3>Strongest drivers across all employees</h3>
         <ol>
@@ -156,7 +163,7 @@
             <li>
               <span class="name">{{ f.label }}</span>
               <span class="bar-wrap"><span class="bar up" [style.width.%]="(100 * f.importance) / maxImportance()"></span></span>
-              <span class="num">{{ f.importance * 100 | number:'1.0-0' }}%</span>
+              <span class="num">{{ (f.importance * 100) | number:'1.0-0' }}%</span>
             </li>
           }
         </ol>
@@ -165,7 +172,7 @@
     </div>
   </section>
 }
-
+ 
 <footer class="foot">
   Angular, Flask and scikit-learn. Tested and deployed with GitHub Actions. Educational prototype, not for real HR decisions.
 </footer>
