@@ -1,0 +1,191 @@
+{
+  "champion": "Logistic Regression",
+  "model_version": "1.0.0",
+  "trained_at": "2026-10-19T05:20:53+00:00",
+  "dataset": {
+    "rows": 500,
+    "features": 30,
+    "left": 81,
+    "stayed": 419,
+    "train_rows": 400,
+    "test_rows": 100
+  },
+  "models": {
+    "Logistic Regression": {
+      "accuracy": 0.83,
+      "precision_weighted": 0.8935794074793588,
+      "recall_weighted": 0.83,
+      "f1_weighted": 0.8474265232974912,
+      "precision_left": 0.4827586206896552,
+      "recall_left": 0.875,
+      "f1_left": 0.6222222222222222,
+      "roc_auc": 0.8898809523809523,
+      "train_accuracy": 0.7925,
+      "overfit_gap": -0.03749999999999998,
+      "cv_roc_auc": 0.7784156142365097,
+      "best_params": {
+        "C": 0.3
+      },
+      "confusion_matrix": [
+        [
+          69,
+          15
+        ],
+        [
+          2,
+          14
+        ]
+      ]
+    },
+    "Random Forest": {
+      "accuracy": 0.84,
+      "precision_weighted": 0.8661538461538462,
+      "recall_weighted": 0.84,
+      "f1_weighted": 0.8496686159844055,
+      "precision_left": 0.5,
+      "recall_left": 0.6875,
+      "f1_left": 0.5789473684210527,
+      "roc_auc": 0.8846726190476191,
+      "train_accuracy": 0.8725,
+      "overfit_gap": 0.032500000000000084,
+      "cv_roc_auc": 0.7582089552238807,
+      "best_params": {
+        "max_depth": 5,
+        "min_samples_leaf": 10
+      },
+      "confusion_matrix": [
+        [
+          73,
+          11
+        ],
+        [
+          5,
+          11
+        ]
+      ]
+    }
+  },
+  "top_features": [
+    {
+      "feature": "MonthlyIncome",
+      "label": "Monthly income",
+      "importance": 0.1788
+    },
+    {
+      "feature": "OverTime",
+      "label": "Works overtime",
+      "importance": 0.1521
+    },
+    {
+      "feature": "JobInvolvement",
+      "label": "Job involvement",
+      "importance": 0.113
+    },
+    {
+      "feature": "MaritalStatus",
+      "label": "Marital status",
+      "importance": 0.1117
+    },
+    {
+      "feature": "JobRole",
+      "label": "Job role",
+      "importance": 0.0981
+    },
+    {
+      "feature": "YearsWithCurrManager",
+      "label": "Years with current manager",
+      "importance": 0.0551
+    },
+    {
+      "feature": "StockOptionLevel",
+      "label": "Stock option level",
+      "importance": 0.0417
+    },
+    {
+      "feature": "JobLevel",
+      "label": "Job level",
+      "importance": 0.0339
+    },
+    {
+      "feature": "EnvironmentSatisfaction",
+      "label": "Environment satisfaction",
+      "importance": 0.0333
+    },
+    {
+      "feature": "DistanceFromHome",
+      "label": "Distance from home",
+      "importance": 0.0252
+    }
+  ],
+  "samples": {
+    "low_risk": {
+      "Age": 43,
+      "BusinessTravel": "Non-Travel",
+      "DailyRate": 1344,
+      "Department": "Research & Development",
+      "DistanceFromHome": 7,
+      "Education": 3,
+      "EducationField": "Medical",
+      "EnvironmentSatisfaction": 4,
+      "Gender": "Male",
+      "HourlyRate": 37,
+      "JobInvolvement": 4,
+      "JobLevel": 1,
+      "JobRole": "Research Scientist",
+      "JobSatisfaction": 4,
+      "MaritalStatus": "Divorced",
+      "MonthlyIncome": 2089,
+      "MonthlyRate": 5228,
+      "NumCompaniesWorked": 4,
+      "OverTime": "No",
+      "PercentSalaryHike": 14,
+      "PerformanceRating": 3,
+      "RelationshipSatisfaction": 4,
+      "StockOptionLevel": 3,
+      "TotalWorkingYears": 7,
+      "TrainingTimesLastYear": 3,
+      "WorkLifeBalance": 4,
+      "YearsAtCompany": 5,
+      "YearsInCurrentRole": 4,
+      "YearsSinceLastPromotion": 2,
+      "YearsWithCurrManager": 2
+    },
+    "high_risk": {
+      "Age": 33,
+      "BusinessTravel": "Travel_Rarely",
+      "DailyRate": 1017,
+      "Department": "Research & Development",
+      "DistanceFromHome": 25,
+      "Education": 3,
+      "EducationField": "Medical",
+      "EnvironmentSatisfaction": 1,
+      "Gender": "Male",
+      "HourlyRate": 55,
+      "JobInvolvement": 2,
+      "JobLevel": 1,
+      "JobRole": "Research Scientist",
+      "JobSatisfaction": 2,
+      "MaritalStatus": "Single",
+      "MonthlyIncome": 2313,
+      "MonthlyRate": 2993,
+      "NumCompaniesWorked": 4,
+      "OverTime": "Yes",
+      "PercentSalaryHike": 20,
+      "PerformanceRating": 4,
+      "RelationshipSatisfaction": 2,
+      "StockOptionLevel": 0,
+      "TotalWorkingYears": 5,
+      "TrainingTimesLastYear": 0,
+      "WorkLifeBalance": 3,
+      "YearsAtCompany": 2,
+      "YearsInCurrentRole": 2,
+      "YearsSinceLastPromotion": 2,
+      "YearsWithCurrManager": 2
+    }
+  },
+  "library_versions": {
+    "scikit-learn": "1.9.1",
+    "pandas": "3.0.6",
+    "numpy": "2.5.4"
+  }
+}
