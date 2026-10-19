@@ -141,3 +141,4 @@ docker run -p 5000:5000 attrition-api
 ## Limitations and ethics
 
 The model is trained on 500 employees from a public, partly synthetic dataset and evaluated on 100, so scores carry wide uncertainty (cross-validated AUC 0.78 is the more cautious estimate). Precision on leavers is about 0.5: roughly half of the people flagged will not actually leave. Use it as a conversation starter for retention support, never to penalise or select individuals. Protected attributes such as age, gender and marital status are in the data; a production system would need a fairness review.
+github user_name="231998-Laiba" and repo:employee_attrition_prediction_performance
