@@ -1,0 +1,52 @@
+name: Full-stack CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: Backend - tests and training smoke run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: python -m pip install -r backend/requirements.txt
+      # The model bundle and sample payload are committed, so the FULL API test-suite runs here.
+      - name: API and structure tests
+        run: python -m pytest -q backend/tests
+      - name: Training pipeline reproduces end-to-end
+        run: python ml/train.py
+      - name: Tests still pass on the freshly trained bundle
+        run: python -m pytest -q backend/tests
+      - uses: actions/upload-artifact@v4
+        with:
+          name: model-report-and-charts
+          path: docs/
+
+  frontend:
+    name: Frontend - Angular build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: angular-build
+          path: frontend/dist/
