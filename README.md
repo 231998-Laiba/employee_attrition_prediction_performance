@@ -36,15 +36,15 @@ flowchart LR
 - **Single source of truth.** `ml/train.py` writes the model bundle, the API schema and the Angular `feature-schema.ts`, so frontend and backend cannot drift apart.
 - **Defensive API.** Rejects missing or extra fields, wrong types, out-of-range numbers and unknown categories with clear 400 errors.
 - **Explainable result.** Every prediction returns the five factors that moved the estimate most (model-agnostic what-if against typical values).
-- **12 automated API tests** plus CI that retrains the model from scratch and re-runs the tests.
+- **16 automated tests** for the API and recommendations, plus CI that retrains the model from scratch and re-runs the tests.
 
 ## Project structure
 
 ```
 backend/        Flask API, tests, model bundle, helper scripts
-  app.py  make_payload.py  test_pipeline.py  test_api.py  requirements.txt
+  app.py  recommendations.py  make_payload.py  test_pipeline.py  test_api.py  requirements.txt
   models/model_bundle.joblib      fitted pipeline + feature list + schema
-  tests/                           pytest suite (12 tests)
+  tests/                           pytest suite (16 tests)
 ml/train.py     reproducible training, evaluation, charts, schema export
 data/           HR dataset + non-sensitive sample record
 frontend/       Angular app (proxy.conf.json, feature-schema.ts generated)
@@ -69,7 +69,7 @@ python ml\train.py
 # 3. Verify the model, then the API tests
 python backend\make_payload.py
 python backend\test_pipeline.py          # expect: PASS: local inference
-python -m pytest -q backend\tests        # expect: 12 passed
+python -m pytest -q backend\tests        # expect: 16 passed
 
 # 4. Terminal 1 - Flask (keep open)
 python backend\app.py                    # http://127.0.0.1:5000/health
@@ -93,9 +93,31 @@ Shortcut: `.\run_local.ps1` does steps 1, 4 and 5 for you.
 | GET | `/health` | Liveness, model name and version, feature count |
 | GET | `/schema` | Names, types, ranges and allowed categories of all 30 inputs |
 | GET | `/report` | Training metrics and top features |
-| POST | `/predict` | JSON with all 30 raw features, returns prediction, `probability_leave`, `risk_level`, `drivers` |
+| POST | `/predict` | JSON with all 30 raw features, returns prediction, `probability_leave`, `risk_level`, `drivers`, `recommendations` |
 
 Risk bands on the leaving probability: **Low** below 0.35, **Medium** 0.35 to 0.60, **High** from 0.60.
+
+## Novel contribution: Retention recommendations
+
+For Medium- and High-risk predictions, the API tests one-at-a-time alternatives for selected HR-controllable features and returns up to three changes that lower the model's estimated probability of leaving. Protected attributes are never changed. These are model-based suggestions, not guarantees or instructions to change an employee's circumstances; discuss appropriate support with the employee.
+
+Example portion of a `POST /predict` response:
+
+```json
+{
+  "risk_level": "High",
+  "recommendations": [
+    {
+      "feature": "OverTime",
+      "current_value": "Yes",
+      "suggested_value": "No",
+      "new_probability": 0.421,
+      "risk_reduction": 0.184,
+      "new_risk_level": "Medium"
+    }
+  ]
+}
+```
 
 ## Results (held-out test set, 100 employees)
 

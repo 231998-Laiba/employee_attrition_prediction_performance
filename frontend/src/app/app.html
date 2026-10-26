@@ -62,6 +62,21 @@
           }
         </ul>
       </section>
+      @if (r.recommendations.length > 0) {
+        <section class="recommendations">
+          <h2>Suggested actions</h2>
+          <ul>
+            @for (recommendation of r.recommendations; track recommendation.feature + recommendation.suggested_value) {
+              <li>
+                Change {{ recommendation.feature }} from {{ recommendation.current_value }} to
+                {{ recommendation.suggested_value }} -> risk drops by
+                {{ recommendation.risk_reduction * 100 | number:'1.0-1' }}%
+                (new risk: {{ recommendation.new_risk_level }})
+              </li>
+            }
+          </ul>
+        </section>
+      }
       <p class="meta">{{ r.model }} v{{ r.model_version }}, answered in {{ r.latency_ms }} ms</p>
       <p class="disclaimer">{{ r.disclaimer }}</p>
     } @else if (loading()) {

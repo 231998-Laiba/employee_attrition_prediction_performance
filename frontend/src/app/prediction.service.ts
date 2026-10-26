@@ -10,6 +10,15 @@ export interface Driver {
   direction: string;
 }
 
+export interface Recommendation {
+  feature: string;
+  current_value: string | number;
+  suggested_value: string | number;
+  new_probability: number;
+  risk_reduction: number;
+  new_risk_level: 'Low' | 'Medium' | 'High';
+}
+
 export interface PredictionResponse {
   prediction: string;
   prediction_code: number;
@@ -18,6 +27,7 @@ export interface PredictionResponse {
   probabilities: number[];
   risk_level: 'Low' | 'Medium' | 'High';
   drivers: Driver[];
+  recommendations: Recommendation[];
   model: string;
   model_version: string;
   latency_ms: number;

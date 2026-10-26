@@ -37,6 +37,9 @@ def test_predict_valid(client):
     assert abs(sum(body["probabilities"]) - 1) < 1e-3
     assert body["risk_level"] in ("Low", "Medium", "High")
     assert isinstance(body["drivers"], list)
+    assert isinstance(body["recommendations"], list)
+    if body["risk_level"] == "Low":
+        assert body["recommendations"] == []
 
 
 def test_predict_missing_feature(client):

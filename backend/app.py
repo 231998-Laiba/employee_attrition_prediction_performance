@@ -17,6 +17,8 @@ import joblib
 import pandas as pd
 from flask import Flask, jsonify, request
 
+from recommendations import get_recommendations
+
 BASE = Path(__file__).resolve().parent
 BUNDLE = joblib.load(BASE / "models" / "model_bundle.joblib")
 MODEL = BUNDLE["pipeline"]
@@ -107,14 +109,21 @@ def predict():
         # --- inference block: replace for custom model architectures ---
         prob = float(MODEL.predict_proba(frame)[0, 1])
         label = int(MODEL.predict(frame)[0])
+        current_risk = risk_level(prob)
+        # Offer changes only when the existing prediction is not Low risk.
+        recommendations = (
+            get_recommendations(MODEL, {feature: data[feature] for feature in FEATURES})
+            if current_risk in ("Medium", "High") else []
+        )
         result = {
             "prediction": BUNDLE["class_labels"][label],
             "prediction_code": label,
             "task": TASK,
             "probability_leave": round(prob, 4),
             "probabilities": [round(1 - prob, 4), round(prob, 4)],
-            "risk_level": risk_level(prob),
+            "risk_level": current_risk,
             "drivers": top_drivers(frame, prob),
+            "recommendations": recommendations,
             "model": BUNDLE.get("model_name"),
             "model_version": BUNDLE.get("model_version"),
             "latency_ms": round((time.perf_counter() - start) * 1000, 1),

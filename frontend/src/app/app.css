@@ -86,6 +86,9 @@ h1 { font-size: clamp(2rem, 4.6vw, 3.4rem); font-weight: 700; letter-spacing: -0
  
 .drivers { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
 .drivers h2 { font-size: 1.1rem; }
+.recommendations { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+.recommendations h2 { font-size: 1.1rem; margin-bottom: 8px; }
+.recommendations li { padding: 7px 0; font-size: 0.9rem; }
 .hint { font-size: 0.82rem; color: var(--ink-2); margin: 4px 0 12px; }
 ul, ol { list-style: none; margin: 0; padding: 0; }
 .drivers li, .importance li { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) 54px; gap: 10px; align-items: center; padding: 7px 0; font-size: 0.9rem; }
