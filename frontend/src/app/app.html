@@ -43,6 +43,10 @@
       <div class="verdict" [attr.data-level]="r.risk_level">
         <p class="big">{{ pct(r.probability_leave) }}<span>%</span></p>
         <p class="level">{{ r.risk_level }} risk of leaving</p>
+        <p class="action-status">
+          Decision: {{ r.action_recommended ? 'retention action recommended' : 'no action recommended' }}
+          at the default cost-sensitive threshold.
+        </p>
         <p class="advice">{{ advice(r.risk_level) }}</p>
       </div>
  
@@ -138,6 +142,55 @@
   </form>
 </main>
  
+<section class="cost-panel" aria-labelledby="cost-title">
+  <h2 id="cost-title">Cost-sensitive decision</h2>
+  <p class="lede">Adjust the estimated cost of a missed leaver and a retention intervention. The threshold is selected from training-fold predictions.</p>
+  <div class="cost-controls">
+    <label>
+      <span class="lab">Replacement cost <strong>${{ replacementCost() | number:'1.0-0' }}</strong></span>
+      <input type="range" min="0" max="50000" step="500" [value]="replacementCost()"
+             (input)="setReplacementCost($any($event.target).value)" (change)="refreshCostAnalysis()" />
+    </label>
+    <label>
+      <span class="lab">Intervention cost <strong>${{ interventionCost() | number:'1.0-0' }}</strong></span>
+      <input type="range" min="0" max="10000" step="100" [value]="interventionCost()"
+             (input)="setInterventionCost($any($event.target).value)" (change)="refreshCostAnalysis()" />
+    </label>
+  </div>
+  @if (deployedStatic) {
+    <p class="small">Cost analysis requires the local Flask API.</p>
+  } @else if (costLoading() && !costAnalysis()) {
+    <p class="small" role="status">Calculating decision costs…</p>
+  } @else if (costAnalysis(); as analysis) {
+    <p class="cost-headline">
+      Optimal threshold:
+      <strong>{{ analysis.optimal_threshold >= 1 ? 'No action' : pct(analysis.optimal_threshold) + '%' }}</strong>
+      <span>Expected savings vs no action:
+        <strong>${{ analysis.expected_savings_vs_no_action | number:'1.0-0' }}</strong>
+      </span>
+    </p>
+    <svg viewBox="0 0 640 260" class="cost-chart" role="img"
+         aria-label="Estimated total cost by decision threshold, including the previous 35 and 60 percent risk bands">
+      <line x1="60" y1="25" x2="60" y2="210" class="chart-axis" />
+      <line x1="60" y1="210" x2="610" y2="210" class="chart-axis" />
+      <line [attr.x1]="costX(0.35)" y1="25" [attr.x2]="costX(0.35)" y2="210" class="chart-band" />
+      <line [attr.x1]="costX(0.60)" y1="25" [attr.x2]="costX(0.60)" y2="210" class="chart-band" />
+      <line [attr.x1]="costX(analysis.optimal_threshold)" y1="25"
+            [attr.x2]="costX(analysis.optimal_threshold)" y2="210" class="chart-optimal" />
+      <path [attr.d]="costPath()" class="cost-line" />
+      <text x="60" y="235" text-anchor="middle">5%</text>
+      <text [attr.x]="costX(0.35)" y="235" text-anchor="middle">35%</text>
+      <text [attr.x]="costX(0.60)" y="235" text-anchor="middle">60%</text>
+      <text x="610" y="235" text-anchor="middle">100%</text>
+      <text x="335" y="255" text-anchor="middle">Decision threshold</text>
+      <text x="12" y="18">Total cost ($)</text>
+    </svg>
+    <p class="small">Dashed lines mark the previous 0.35 and 0.60 risk bands; the dotted line marks the cost-optimal threshold. The 100% point is the no-action baseline.</p>
+  } @else if (costError()) {
+    <p class="error" role="alert">Cost analysis failed: {{ costError() }}</p>
+  }
+</section>
+
 @if (report(); as r) {
   <section class="modelcard" aria-labelledby="mc-title">
     <h2 id="mc-title">Model card</h2>

@@ -4,12 +4,14 @@ Endpoints
   GET  /health   liveness + model info
   GET  /schema   input schema (names, types, ranges, allowed categories)
   GET  /report   training metrics and top features
-  POST /predict  JSON object with all raw features -> prediction, probability, risk level, top drivers
+  GET/POST /cost-analysis  cost-sensitive decision threshold and estimated savings
+  POST /predict  JSON object with all raw features -> prediction, probability, risk level, action recommendation
 """
 from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 from pathlib import Path
 
@@ -17,6 +19,11 @@ import joblib
 import pandas as pd
 from flask import Flask, jsonify, request
 
+from cost_analysis import (
+    DEFAULT_INTERVENTION_COST,
+    DEFAULT_REPLACEMENT_COST,
+    analyze_costs,
+)
 from recommendations import get_recommendations
 
 BASE = Path(__file__).resolve().parent
@@ -26,6 +33,8 @@ FEATURES: list[str] = BUNDLE["features"]
 TASK = BUNDLE.get("task", "classification")
 SCHEMA = {f["name"]: f for f in BUNDLE["schema"]}
 REFERENCE = BUNDLE["reference"]
+DECISION_THRESHOLD = BUNDLE["decision_threshold"]
+COST_SUMMARY = BUNDLE["cost_analysis"]
 REPORT_PATH = BASE.parent / "docs" / "model_report.json"
 
 LOW, HIGH = 0.35, 0.60  # risk bands on the predicted probability of leaving
@@ -90,6 +99,36 @@ def report():
     return jsonify(json.loads(REPORT_PATH.read_text(encoding="utf-8")))
 
 
+@app.route("/cost-analysis", methods=["GET", "POST"])
+def cost_analysis():
+    data = request.args.to_dict() if request.method == "GET" else request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(error="Expected a JSON object"), 400
+    unknown = set(data) - {"replacement_cost", "intervention_cost"}
+    if unknown:
+        return jsonify(error="Unknown cost fields", fields=sorted(unknown)), 400
+
+    costs = {}
+    defaults = {
+        "replacement_cost": DEFAULT_REPLACEMENT_COST,
+        "intervention_cost": DEFAULT_INTERVENTION_COST,
+    }
+    for name, default in defaults.items():
+        value = data.get(name, default)
+        if isinstance(value, bool):
+            return jsonify(error=f"{name} must be a finite non-negative number"), 400
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            return jsonify(error=f"{name} must be a finite non-negative number"), 400
+        if not math.isfinite(value) or value < 0:
+            return jsonify(error=f"{name} must be a finite non-negative number"), 400
+        costs[name] = value
+
+    result = analyze_costs(COST_SUMMARY, **costs)
+    return jsonify(**costs, **result)
+
+
 @app.post("/predict")
 def predict():
     start = time.perf_counter()
@@ -122,6 +161,9 @@ def predict():
             "probability_leave": round(prob, 4),
             "probabilities": [round(1 - prob, 4), round(prob, 4)],
             "risk_level": current_risk,
+            "action_recommended": (
+                DECISION_THRESHOLD < 1 and prob >= DECISION_THRESHOLD
+            ),
             "drivers": top_drivers(frame, prob),
             "recommendations": recommendations,
             "model": BUNDLE.get("model_name"),

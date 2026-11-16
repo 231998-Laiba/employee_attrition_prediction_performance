@@ -36,6 +36,7 @@ def test_predict_valid(client):
     assert 0 <= body["probability_leave"] <= 1
     assert abs(sum(body["probabilities"]) - 1) < 1e-3
     assert body["risk_level"] in ("Low", "Medium", "High")
+    assert isinstance(body["action_recommended"], bool)
     assert isinstance(body["drivers"], list)
     assert isinstance(body["recommendations"], list)
     if body["risk_level"] == "Low":

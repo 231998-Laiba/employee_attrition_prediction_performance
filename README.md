@@ -93,9 +93,14 @@ Shortcut: `.\run_local.ps1` does steps 1, 4 and 5 for you.
 | GET | `/health` | Liveness, model name and version, feature count |
 | GET | `/schema` | Names, types, ranges and allowed categories of all 30 inputs |
 | GET | `/report` | Training metrics and top features |
-| POST | `/predict` | JSON with all 30 raw features, returns prediction, `probability_leave`, `risk_level`, `drivers`, `recommendations` |
+| GET/POST | `/cost-analysis` | Optional `replacement_cost` and `intervention_cost`; returns the optimal threshold, expected savings vs no action, and cost curve |
+| POST | `/predict` | JSON with all 30 raw features, returns prediction, `probability_leave`, `risk_level`, `action_recommended`, `drivers`, `recommendations` |
 
 Risk bands on the leaving probability: **Low** below 0.35, **Medium** 0.35 to 0.60, **High** from 0.60.
+
+## From prediction to decision
+
+The default decision threshold minimizes false-negative replacement costs and false-positive intervention costs over 5-fold out-of-fold predictions on the training split only (defaults: $15,000 and $1,500). The bundle stores the threshold and cost curve; the dashboard sliders recalculate costs through `/cost-analysis`. `/predict` reports `action_recommended` using the saved default threshold. The held-out test set is not used to select the threshold; cost estimates are illustrative, not guarantees.
 
 ## Novel contribution: Retention recommendations
 

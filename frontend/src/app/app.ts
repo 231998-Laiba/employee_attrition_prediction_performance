@@ -1,7 +1,12 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FEATURES, SAMPLES, Feature } from './feature-schema';
-import { PredictionService, PredictionResponse, ModelReport } from './prediction.service';
+import {
+  PredictionService,
+  PredictionResponse,
+  ModelReport,
+  CostAnalysisResponse,
+} from './prediction.service';
 
 
 type Seg = { d: string; color: string; label: string };
@@ -48,15 +53,60 @@ export class App implements OnInit {
   error = signal('');
   result = signal<PredictionResponse | null>(null);
   report = signal<ModelReport | null>(null);
+  replacementCost = signal(15000);
+  interventionCost = signal(1500);
+  costAnalysis = signal<CostAnalysisResponse | null>(null);
+  costLoading = signal(false);
+  costError = signal('');
+  private costRequest = 0;
 
   filled = computed(() => this.fields.filter(f => this.values()[f.name] !== null && this.values()[f.name] !== '').length);
   needle = computed(() => -90 + 180 * (this.result()?.probability_leave ?? 0));
   models = computed(() => Object.entries(this.report()?.models ?? {}));
   maxImportance = computed(() => Math.max(...(this.report()?.top_features ?? [{ importance: 1 }]).map(f => f.importance)));
   maxImpact = computed(() => Math.max(0.01, ...(this.result()?.drivers ?? []).map(d => Math.abs(d.impact))));
+  costScaleMax = computed(() => Math.max(1, ...(this.costAnalysis()?.cost_curve ?? []).map(point => point.total_cost)));
+  costPath = computed(() => (this.costAnalysis()?.cost_curve ?? [])
+    .map((point, index) => `${index ? 'L' : 'M'} ${this.costX(point.threshold)} ${this.costY(point.total_cost)}`)
+    .join(' '));
 
   ngOnInit() {
     this.api.report().subscribe({ next: r => this.report.set(r), error: () => this.report.set(null) });
+    if (!this.deployedStatic) this.refreshCostAnalysis();
+  }
+
+  setReplacementCost(raw: string) {
+    this.replacementCost.set(Number(raw));
+  }
+
+  setInterventionCost(raw: string) {
+    this.interventionCost.set(Number(raw));
+  }
+
+  refreshCostAnalysis() {
+    const request = ++this.costRequest;
+    this.costLoading.set(true);
+    this.costError.set('');
+    this.api.costAnalysis(this.replacementCost(), this.interventionCost()).subscribe({
+      next: result => {
+        if (request !== this.costRequest) return;
+        this.costAnalysis.set(result);
+        this.costLoading.set(false);
+      },
+      error: err => {
+        if (request !== this.costRequest) return;
+        this.costError.set(err.error?.error ?? err.message);
+        this.costLoading.set(false);
+      },
+    });
+  }
+
+  costX(threshold: number) {
+    return 60 + ((threshold - 0.05) / 0.95) * 550;
+  }
+
+  costY(cost: number) {
+    return 210 - (cost / this.costScaleMax()) * 180;
   }
 
   set(field: Feature, raw: string) {

@@ -26,12 +26,29 @@ export interface PredictionResponse {
   probability_leave: number;
   probabilities: number[];
   risk_level: 'Low' | 'Medium' | 'High';
+  action_recommended: boolean;
   drivers: Driver[];
   recommendations: Recommendation[];
   model: string;
   model_version: string;
   latency_ms: number;
   disclaimer?: string;
+}
+
+export interface CostCurvePoint {
+  threshold: number;
+  false_negatives: number;
+  false_positives: number;
+  total_cost: number;
+  no_action?: boolean;
+}
+
+export interface CostAnalysisResponse {
+  replacement_cost: number;
+  intervention_cost: number;
+  optimal_threshold: number;
+  expected_savings_vs_no_action: number;
+  cost_curve: CostCurvePoint[];
 }
 
 export interface ModelMetrics {
@@ -63,6 +80,13 @@ export class PredictionService {
   /** Relative /api path: forwarded to Flask by the Angular dev proxy (local only). */
   predict(payload: Record<string, string | number>): Observable<PredictionResponse> {
     return this.http.post<PredictionResponse>('/api/predict', payload);
+  }
+
+  costAnalysis(replacementCost: number, interventionCost: number): Observable<CostAnalysisResponse> {
+    return this.http.post<CostAnalysisResponse>('/api/cost-analysis', {
+      replacement_cost: replacementCost,
+      intervention_cost: interventionCost,
+    });
   }
 
   /** Static JSON shipped with the site, so the model card also works on GitHub Pages. */

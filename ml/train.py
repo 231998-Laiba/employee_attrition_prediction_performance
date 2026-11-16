@@ -17,6 +17,7 @@ Everything is seeded, so results are reproducible.
 from __future__ import annotations
 
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -35,12 +36,20 @@ from sklearn.inspection import permutation_importance
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (accuracy_score, confusion_matrix, f1_score,
                              precision_score, recall_score, roc_auc_score, roc_curve)
-from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
+from sklearn.model_selection import GridSearchCV, StratifiedKFold, cross_val_predict, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 SEED = 42
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+from backend.cost_analysis import (  # noqa: E402
+    DEFAULT_INTERVENTION_COST,
+    DEFAULT_REPLACEMENT_COST,
+    analyze_costs,
+    summarize_threshold_counts,
+)
+
 DATA = ROOT / "data" / "WA_Fn-UseC_-HR-Employee-Attrition.csv"
 BUNDLE_PATH = ROOT / "backend" / "models" / "model_bundle.joblib"
 DOCS = ROOT / "docs"
@@ -178,6 +187,23 @@ def main() -> None:
     pipe = fitted[champion][0]
     print("Champion model (by cross-validated ROC-AUC):", champion)
 
+    oof_prob = cross_val_predict(
+        pipe, X_train, y_train, cv=cv, method="predict_proba", n_jobs=-1
+    )[:, 1]
+    thresholds = [round(value / 100, 2) for value in range(5, 96)]
+    threshold_summary = summarize_threshold_counts(y_train, oof_prob, thresholds)
+    default_costs = {
+        "replacement_cost": DEFAULT_REPLACEMENT_COST,
+        "intervention_cost": DEFAULT_INTERVENTION_COST,
+    }
+    default_cost_analysis = analyze_costs(
+        threshold_summary, **default_costs
+    )
+    print(
+        "Cost-sensitive threshold (training OOF only): "
+        f"{default_cost_analysis['optimal_threshold']:.2f}"
+    )
+
     # Global importance: permutation importance on the test set, grouped per RAW feature
     perm = permutation_importance(pipe, X_test, y_test, scoring="roc_auc", n_repeats=30, random_state=SEED, n_jobs=-1)
     imp = pd.Series(perm.importances_mean, index=X.columns).clip(lower=0).sort_values(ascending=False)
@@ -196,6 +222,13 @@ def main() -> None:
     bundle = {
         "pipeline": pipe, "features": list(X.columns), "task": "classification", "model_version": "1.0.0",
         "model_name": champion, "class_labels": ["Stays", "Leaves"], "schema": schema, "reference": reference,
+        "decision_threshold": default_cost_analysis["optimal_threshold"],
+        "cost_curve": default_cost_analysis["cost_curve"],
+        "cost_analysis": {
+            **threshold_summary,
+            **default_costs,
+            "cost_curve": default_cost_analysis["cost_curve"],
+        },
         "trained_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "library_versions": {"scikit-learn": sklearn.__version__, "pandas": pd.__version__, "numpy": np.__version__},
     }
@@ -264,6 +297,33 @@ def main() -> None:
     ax.barh([META[f][0] for f in top.index], top.values, color="#2F6F8F")
     ax.set(title=f"Top 10 drivers of attrition ({champion}, permutation importance)", xlabel="Share of total importance")
     fig.tight_layout(); fig.savefig(CHARTS / "6_feature_importance.png", dpi=140); plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7.5, 5))
+    curve = default_cost_analysis["cost_curve"]
+    ax.plot(
+        [point["threshold"] for point in curve],
+        [point["total_cost"] for point in curve],
+        color="#2F6F8F",
+        lw=2.2,
+        label="Expected total cost",
+    )
+    ax.axvline(0.35, color="#D9822B", ls="--", label="Existing 0.35 band")
+    ax.axvline(0.60, color="#C8412B", ls="--", label="Existing 0.60 band")
+    ax.axvline(
+        default_cost_analysis["optimal_threshold"],
+        color="#2F7D5B",
+        ls=":",
+        label=f"Optimal {default_cost_analysis['optimal_threshold']:.2f}",
+    )
+    ax.set(
+        title="Cost-sensitive decision threshold (training OOF)",
+        xlabel="Decision threshold",
+        ylabel="Total cost",
+    )
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(CHARTS / "7_cost_sensitive_threshold.png", dpi=140)
+    plt.close(fig)
 
     print(f"Saved bundle -> {BUNDLE_PATH.relative_to(ROOT)} ({BUNDLE_PATH.stat().st_size/1024:.0f} KB); charts -> docs/charts")
 

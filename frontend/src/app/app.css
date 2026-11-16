@@ -78,6 +78,7 @@ h1 { font-size: clamp(2rem, 4.6vw, 3.4rem); font-weight: 700; letter-spacing: -0
 .big { margin: 0; font: 700 4.4rem/1 var(--display); }
 .big span { font-size: 2rem; margin-left: 2px; color: var(--ink-2); }
 .level { margin: 6px 0 0; font-weight: 600; font-size: 1.1rem; }
+.action-status { margin: 6px auto 0; color: var(--teal-dark); font-size: 0.9rem; font-weight: 600; }
 .verdict[data-level='High'] .big, .verdict[data-level='High'] .level { color: var(--risk); }
 .verdict[data-level='Medium'] .big, .verdict[data-level='Medium'] .level { color: color-mix(in srgb, var(--amber) 80%, var(--ink)); }
 .verdict[data-level='Low'] .big, .verdict[data-level='Low'] .level { color: var(--stay); }
@@ -101,6 +102,18 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
 .meta { margin: 16px 0 0; font-size: 0.8rem; color: var(--ink-2); text-align: center; }
 .disclaimer { margin: 6px 0 0; font-size: 0.78rem; color: var(--ink-2); text-align: center; }
+
+/* ---------- cost-sensitive decision ---------- */
+.cost-panel { max-width: 1180px; margin: 40px auto 0; padding: 28px 20px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
+.cost-panel h2 { font-size: 1.7rem; }
+.cost-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px 36px; margin: 22px 0; }
+.cost-controls input[type='range'] { padding: 8px 0; min-height: 28px; accent-color: var(--teal); }
+.cost-headline { display: flex; gap: 24px; flex-wrap: wrap; align-items: baseline; margin: 16px 0; font-size: 1.1rem; }
+.cost-chart { display: block; width: 100%; max-height: 360px; overflow: visible; color: var(--ink-2); font: 12px var(--body); }
+.chart-axis { stroke: var(--line); stroke-width: 1.5; }
+.chart-band { stroke: var(--amber); stroke-width: 1.5; stroke-dasharray: 6 5; }
+.chart-optimal { stroke: var(--stay); stroke-width: 2; stroke-dasharray: 2 4; }
+.cost-line { fill: none; stroke: var(--teal); stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
  
 /* ---------- form ---------- */
 .toolbar { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: center; padding-bottom: 16px; border-bottom: 2px solid var(--ink); }
@@ -156,6 +169,7 @@ thead th:first-child { text-align: left; }
 :host-context([data-theme='dark']) thead th.champ,
 :host-context([data-theme='dark']) thead th small { color: #7fd6c6; }
 :host-context([data-theme='dark']) button.ghost:hover { color: #7fd6c6; }
+:host-context([data-theme='dark']) .cost-panel { background: var(--panel); }
  
 @media (max-width: 640px) { .masthead { padding-top: 64px; } }
  
