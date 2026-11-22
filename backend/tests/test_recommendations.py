@@ -76,6 +76,12 @@ def test_action_candidates_are_valid_according_to_schema():
             )
 
 
+def test_recommendations_are_distinct_features():
+    """Each suggested action changes a different feature."""
+    features = [item["feature"] for item in get_recommendations(MODEL, SAMPLE_EMPLOYEE)]
+    assert len(features) == len(set(features))
+
+
 def test_each_recommendation_reduces_probability():
     """Verify that every returned change beats the employee's baseline score."""
     # Score the original record once for comparisons.

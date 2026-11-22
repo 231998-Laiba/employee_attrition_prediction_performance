@@ -37,7 +37,7 @@ DECISION_THRESHOLD = BUNDLE["decision_threshold"]
 COST_SUMMARY = BUNDLE["cost_analysis"]
 REPORT_PATH = BASE.parent / "docs" / "model_report.json"
 
-LOW, HIGH = 0.35, 0.60  # risk bands on the predicted probability of leaving
+LOW, HIGH = BUNDLE.get("risk_bands", {}).get("low", 0.35), BUNDLE.get("risk_bands", {}).get("high", 0.60)  # risk bands on P(leave)
 DISCLAIMER = "Educational prototype. Use as decision support, never as the sole basis for HR decisions."
 
 app = Flask(__name__)

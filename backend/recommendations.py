@@ -84,6 +84,9 @@ def get_recommendations(pipeline, employee_dict, top_n=3):
 
     # Rank the strongest improvements first and respect the requested result count.
     recommendations.sort(key=lambda recommendation: recommendation["risk_reduction"], reverse=True)
+    # Keep only the strongest alternative per feature so the list offers distinct actions.
+    seen = set()
+    recommendations = [r for r in recommendations if not (r["feature"] in seen or seen.add(r["feature"]))]
     # Round the displayed probability drop after sorting by its full precision.
     for recommendation in recommendations:
         recommendation["risk_reduction"] = round(recommendation["risk_reduction"], 4)
