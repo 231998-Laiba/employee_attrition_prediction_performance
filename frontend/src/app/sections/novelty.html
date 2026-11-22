@@ -1,0 +1,107 @@
+@let r = report();
+<div class="novel-cards">
+  <article class="card novel" reveal style="--d: 0">
+    <span class="n-num">01</span>
+    <h4>Prescriptive retention actions</h4>
+    <p class="muted small">The paper only predicts. For Medium/High-risk employees the system searches one-change what-if scenarios on
+      HR-controllable factors (overtime, travel, stock options, salary hike, training, work-life balance, job satisfaction) and returns the
+      three that lower risk most. Protected attributes are never changed. Try “Apply &amp; re-score” in the predictor.</p>
+    <a class="link" href="#predict">Open the predictor →</a>
+  </article>
+  <article class="card novel" reveal style="--d: 1">
+    <span class="n-num">02</span>
+    <h4>Cost-sensitive decisions</h4>
+    <p class="muted small">Instead of a fixed 0.5 cut-off, the action threshold minimises expected cost (missed leaver vs. intervention)
+      using out-of-fold training predictions only, then is validated on the untouched test set.</p>
+    <a class="link" href="#cost">Explore the cost model ↓</a>
+  </article>
+  <article class="card novel" reveal style="--d: 2">
+    <span class="n-num">03</span>
+    <h4>Leakage audit of the paper</h4>
+    <p class="muted small">A controlled experiment shows the paper's ~97% scores are reproducible only when duplicates leak across the split
+      ({{ pct(r.leakage_audit.test_leavers_also_in_train) }}% of leaky test leavers were memorised), and documents the honest ceiling.</p>
+    <a class="link" href="#research">See the evidence ↑</a>
+  </article>
+  <article class="card novel" reveal style="--d: 3">
+    <span class="n-num">04</span>
+    <h4>Department risk management</h4>
+    <p class="muted small">Turns individual scores into a portfolio view per department (the paper's “risk management” idea), plus a
+      serverless, parity-tested in-browser engine so the public site gives real predictions.</p>
+    <a class="link" href="#risk">View risk portfolio ↓</a>
+  </article>
+</div>
+
+<div class="grid-2">
+  <article class="card" id="cost" reveal>
+    <span class="eyebrow">Novelty 02</span>
+    <h3>Cost-sensitive decision threshold</h3>
+    <p class="muted small">Drag the sliders: the optimal threshold and savings are recomputed from training out-of-fold predictions.</p>
+    <div class="sliders">
+      <label>
+        <span>Cost of losing an employee <strong>${{ replacementCost() | number: '1.0-0' }}</strong></span>
+        <input type="range" min="0" max="60000" step="500" [value]="replacementCost()" (input)="setReplacement($any($event.target).value)" aria-label="Replacement cost" />
+      </label>
+      <label>
+        <span>Cost of one retention intervention <strong>${{ interventionCost() | number: '1.0-0' }}</strong></span>
+        <input type="range" min="0" max="10000" step="100" [value]="interventionCost()" (input)="setIntervention($any($event.target).value)" aria-label="Intervention cost" />
+      </label>
+    </div>
+    @if (analysis(); as a) {
+      <div class="kpi-row three">
+        <div class="kpi accent"><span class="kpi-label">Optimal threshold</span><span class="kpi-val">{{ a.optimal_threshold >= 1 ? 'No action' : pct(a.optimal_threshold) + '%' }}</span></div>
+        <div class="kpi good"><span class="kpi-label">Savings vs no action</span><span class="kpi-val">{{ a.expected_savings_vs_no_action >= 1e6 ? '$' + (a.expected_savings_vs_no_action / 1e6 | number: '1.2-2') + 'M' : '$' + (a.expected_savings_vs_no_action / 1000 | number: '1.0-0') + 'k' }}</span></div>
+        <div class="kpi"><span class="kpi-label">Train OOF at optimum</span>
+          <span class="kpi-val sm">{{ optimalPoint()?.false_negatives ?? '–' }} missed · {{ optimalPoint()?.false_positives ?? '–' }} alarms</span></div>
+      </div>
+      <svg viewBox="0 0 640 250" class="cost-chart" role="img" aria-label="Expected total cost by decision threshold">
+        <defs><linearGradient id="costFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="var(--accent)" stop-opacity=".35" /><stop offset="100%" stop-color="var(--accent)" stop-opacity="0" /></linearGradient></defs>
+        <line x1="56" y1="30" x2="56" y2="210" class="axis-l" /><line x1="56" y1="210" x2="616" y2="210" class="axis-l" />
+        <line x1="56" [attr.y1]="noActionY()" x2="616" [attr.y2]="noActionY()" class="ref-l" />
+        <text x="612" [attr.y]="noActionY() - 6" text-anchor="end" class="tick">no action</text>
+        <line [attr.x1]="cx(0.5)" y1="30" [attr.x2]="cx(0.5)" y2="210" class="ref-l" />
+        <path [attr.d]="area()" fill="url(#costFill)" />
+        <path [attr.d]="path()" class="cost-line" />
+        @if (optimalPoint(); as o) {
+          <line [attr.x1]="cx(o.threshold)" y1="30" [attr.x2]="cx(o.threshold)" y2="210" class="opt-l" />
+          <circle [attr.cx]="cx(o.threshold)" [attr.cy]="cy(o.total_cost)" r="6" class="opt-dot" />
+          <text [attr.x]="cx(o.threshold)" y="24" text-anchor="middle" class="opt-t">optimal {{ pct(o.threshold) }}%</text>
+        }
+        @for (t of [0.05, 0.25, 0.5, 0.75, 0.95]; track t) { <text [attr.x]="cx(t)" y="228" text-anchor="middle" class="tick">{{ pct(t) }}%</text> }
+        <text x="336" y="246" text-anchor="middle" class="tick">decision threshold on P(leave)</text>
+      </svg>
+    } @else if (costError()) {
+      <p class="alert">Cost analysis failed: {{ costError() }}</p>
+    } @else {
+      <div class="skeleton"><span></span><span></span></div>
+    }
+    <p class="callout small">
+      Held-out validation at the default costs: threshold {{ pct(validation().threshold) }}% costs
+      <strong>${{ validation().test_cost_at_threshold | number }}</strong> vs ${{ validation().test_cost_at_0_5 | number }} at 0.50 and
+      ${{ validation().test_cost_no_action | number }} with no action, catching {{ validation().test_metrics_at_threshold.recall_left * 100 | number: '1.0-0' }}% of leavers
+      (vs {{ r.models[r.champion].recall_left * 100 | number: '1.0-0' }}% at 0.50).
+    </p>
+  </article>
+
+  <article class="card" id="risk" reveal>
+    <span class="eyebrow">Novelty 04 · Risk management</span>
+    <h3>Department risk portfolio</h3>
+    <p class="muted small">Champion risk bands for the {{ riskTotals().n }} held-out employees. Bands: Low &lt; {{ pct(r.risk_bands.low) }}% ≤ Medium &lt; {{ pct(r.risk_bands.high) }}% ≤ High.</p>
+    <div class="stack-list">
+      @for (d of riskRows(); track d.department) {
+        <div class="stack-row">
+          <div class="stack-head"><strong>{{ d.short }}</strong><span class="muted small">{{ d.n }} employees · {{ d.actual_leavers }} actually left · mean risk {{ pct(d.mean_probability) }}%</span></div>
+          <div class="stack-bar" role="img" [attr.aria-label]="d.department + ': ' + d.Low + ' low, ' + d.Medium + ' medium, ' + d.High + ' high'">
+            <span class="s-low" [style.width.%]="d.low">{{ d.Low }}</span>
+            <span class="s-med" [style.width.%]="d.med">{{ d.Medium || '' }}</span>
+            <span class="s-high" [style.width.%]="d.high">{{ d.High || '' }}</span>
+          </div>
+        </div>
+      }
+    </div>
+    <div class="legend"><span><i class="s-low"></i>Low</span><span><i class="s-med"></i>Medium</span><span><i class="s-high"></i>High</span></div>
+    <p class="callout small">
+      {{ riskTotals().flagged }} of {{ riskTotals().leavers }} actual leavers ({{ pct(riskTotals().flagged / riskTotals().leavers) }}%) fall in the
+      Medium or High band, so HR attention can be focused on a short list instead of the whole workforce.
+    </p>
+  </article>
+</div>

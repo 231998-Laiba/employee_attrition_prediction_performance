@@ -1,246 +1,199 @@
-<header class="masthead">
-  <div class="masthead-inner">
-    <div>
-      <h1>231998 - Attrition Risk Console</h1>
-      <p class="lede">Enter an employee profile and see how likely they are to leave, and which factors push that estimate up or down.</p>
+<a class="skip" href="#predict">Skip to predictor</a>
+
+<header class="topbar" [class.scrolled]="scrolled()">
+  <div class="topbar-inner">
+    <a class="brand" href="#overview" (click)="go('overview', $event)">
+      <span class="logo" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M4 22 L11 14 L17 19 L28 7" /><circle cx="28" cy="7" r="2.6" /></svg></span>
+      <span>Attrition<b>Risk</b> Console</span>
+    </a>
+    <nav class="nav" [class.open]="menuOpen()" aria-label="Sections">
+      @for (n of nav; track n.id) {
+        <a [href]="'#' + n.id" [class.active]="active() === n.id" (click)="go(n.id, $event)" [attr.aria-current]="active() === n.id ? 'true' : null">
+          {{ n.label }}@if (n.id === 'novelty') { <span class="nav-dot" aria-hidden="true"></span> }
+        </a>
+      }
+    </nav>
+    <div class="top-actions">
+      <button type="button" class="engine" [attr.data-mode]="mode()" (click)="switchEngine()"
+              [title]="mode() === 'api' ? 'Using local Flask API — click to use in-browser engine' : mode() === 'browser' ? 'Using in-browser engine' : 'Detecting engine'">
+        <span class="pulse"></span>
+        @switch (mode()) { @case ('api') { Flask API } @case ('browser') { In-browser } @case ('detecting') { Connecting… } @default { Offline } }
+      </button>
+      <button type="button" class="icon-btn" (click)="toggleTheme()" [attr.aria-label]="'Switch to ' + (theme() === 'dark' ? 'light' : 'dark') + ' theme'">
+        @if (theme() === 'dark') { ☀ } @else { ☾ }
+      </button>
+      <button type="button" class="icon-btn menu" (click)="menuOpen.set(!menuOpen())" aria-label="Menu" [attr.aria-expanded]="menuOpen()">☰</button>
     </div>
-    @if (report(); as r) {
-      <dl class="vitals" aria-label="Model summary">
-        <div><dt>Model</dt><dd>{{ r.champion }}</dd></div>
-        <div><dt>Test ROC-AUC</dt><dd>{{ r.models[r.champion].roc_auc | number:'1.2-2' }}</dd></div>
-        <div><dt>Trained on</dt><dd>{{ r.dataset.train_rows }} employees</dd></div>
-      </dl>
-    }
   </div>
 </header>
- 
-@if (deployedStatic) {
-  <aside class="notice" role="note">
-    <strong>Static demo.</strong> This page is hosted on GitHub Pages, which serves files only. The Flask model runs on a local machine,
-    so the prediction button is switched off here. The model card below is fully live.
-  </aside>
-}
- 
-<main class="console">
-  <aside class="readout" aria-live="polite" aria-label="Prediction result">
-    <svg viewBox="-14 -4 268 150" class="gauge" role="img"
-         [attr.aria-label]="result() ? 'Attrition probability ' + pct(result()!.probability_leave) + ' percent' : 'Attrition gauge, no prediction yet'">
-      <path d="M 22 120 A 98 98 0 0 1 218 120" class="track" />
-      @for (s of segments; track s.label) {
-        <path [attr.d]="s.d" [attr.stroke]="s.color" class="seg" [class.dim]="result() && result()!.risk_level !== s.label" />
-      }
-      @for (t of ticks; track t.text) {
-        <line [attr.x1]="t.x1" [attr.y1]="t.y1" [attr.x2]="t.x2" [attr.y2]="t.y2" class="tick" />
-        <text [attr.x]="t.tx" [attr.y]="t.ty" class="tick-label" text-anchor="middle">{{ t.text }}</text>
-      }
-      <g class="needle" [style.transform]="'rotate(' + needle() + 'deg)'" [class.idle]="!result()">
-        <line x1="120" y1="120" x2="120" y2="38" />
-        <circle cx="120" cy="120" r="7" />
-      </g>
-    </svg>
- 
-    @if (result(); as r) {
-      <div class="verdict" [attr.data-level]="r.risk_level">
-        <p class="big">{{ pct(r.probability_leave) }}<span>%</span></p>
-        <p class="level">{{ r.risk_level }} risk of leaving</p>
-        <p class="action-status">
-          Decision: {{ r.action_recommended ? 'retention action recommended' : 'no action recommended' }}
-          at the default cost-sensitive threshold.
-        </p>
-        <p class="advice">{{ advice(r.risk_level) }}</p>
-      </div>
- 
-      <section class="drivers">
-        <h2>What moved this estimate</h2>
-        <p class="hint">Each bar shows how many percentage points the risk would change if that factor were typical.</p>
-        <ul>
-          @for (d of r.drivers; track d.feature) {
-            <li>
-              <span class="name">{{ d.label }} <em>{{ d.value }}</em></span>
-              <span class="bar-wrap" role="img" [attr.aria-label]="d.direction">
-                <span class="bar" [class.up]="d.impact > 0" [class.down]="d.impact < 0"
-                      [style.width.%]="(100 * (d.impact < 0 ? -d.impact : d.impact)) / maxImpact()"></span>
-              </span>
-              <span class="num">{{ d.impact > 0 ? '+' : '' }}{{ (d.impact * 100) | number:'1.0-0' }} pts</span>
-            </li>
-          }
-        </ul>
-      </section>
-      @if (r.recommendations.length > 0) {
-        <section class="recommendations">
-          <h2>Suggested actions</h2>
-          <ul>
-            @for (recommendation of r.recommendations; track recommendation.feature + recommendation.suggested_value) {
-              <li>
-                Change {{ recommendation.feature }} from {{ recommendation.current_value }} to
-                {{ recommendation.suggested_value }} -> risk drops by
-                {{ recommendation.risk_reduction * 100 | number:'1.0-1' }}%
-                (new risk: {{ recommendation.new_risk_level }})
-              </li>
-            }
-          </ul>
-        </section>
-      }
-      <p class="meta">{{ r.model }} v{{ r.model_version }}, answered in {{ r.latency_ms }} ms</p>
-      <p class="disclaimer">{{ r.disclaimer }}</p>
-    } @else if (loading()) {
-      <p class="placeholder">Running the model…</p>
-    } @else {
-      <p class="placeholder">
-        @if (deployedStatic) { Predictions need the local Flask API. }
-        @else { Fill in the profile, or load an example, then run the prediction. }
-      </p>
-    }
-  </aside>
- 
-  <form class="profile" (submit)="$event.preventDefault(); submit()" novalidate>
-    <div class="toolbar">
-      <div class="progress" role="status">
-        <span class="count">{{ filled() }} of {{ fields.length }}</span> fields complete
-        <span class="meter"><span [style.width.%]="(100 * filled()) / fields.length"></span></span>
-      </div>
-      <div class="presets">
-        <button type="button" class="ghost" (click)="load('low_risk')">Load low-risk example</button>
-        <button type="button" class="ghost" (click)="load('high_risk')">Load high-risk example</button>
-        <button type="button" class="ghost" (click)="clear()">Clear</button>
-      </div>
-    </div>
- 
-    @for (g of groups; track g.name) {
-      <fieldset>
-        <legend>{{ g.name }}</legend>
-        <div class="grid">
-          @for (f of g.fields; track f.name) {
-            <label>
-              <span class="lab">{{ f.label }}@if (f.unit) { <small>{{ f.unit }}</small> }</span>
-              @if (f.kind === 'number') {
-                <input type="number" step="any" inputmode="decimal" [name]="f.name"
-                       [attr.min]="f.min" [attr.max]="f.max" [required]="f.required"
-                       [value]="values()[f.name] ?? ''" (input)="set(f, $any($event.target).value)" />
-              } @else {
-                <select [name]="f.name" [required]="f.required" (change)="set(f, $any($event.target).value)">
-                  <option value="" [selected]="values()[f.name] === null">Select…</option>
-                  @for (o of f.options ?? []; track o.value) {
-                    <option [value]="o.value" [selected]="isSelected(f, o.value)">{{ o.label }}</option>
-                  }
-                </select>
-              }
-            </label>
-          }
-        </div>
-      </fieldset>
-    }
- 
-    @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
- 
-    <div class="submit-row">
-      <button type="submit" class="primary" [disabled]="loading() || deployedStatic">
-        {{ loading() ? 'Predicting…' : 'Run local prediction' }}
-      </button>
-      <span class="small">Sent to Flask <code>POST /predict</code> through the dev proxy.</span>
-    </div>
-  </form>
-</main>
- 
-<section class="cost-panel" aria-labelledby="cost-title">
-  <h2 id="cost-title">Cost-sensitive decision</h2>
-  <p class="lede">Adjust the estimated cost of a missed leaver and a retention intervention. The threshold is selected from training-fold predictions.</p>
-  <div class="cost-controls">
-    <label>
-      <span class="lab">Replacement cost <strong>${{ replacementCost() | number:'1.0-0' }}</strong></span>
-      <input type="range" min="0" max="50000" step="500" [value]="replacementCost()"
-             (input)="setReplacementCost($any($event.target).value)" (change)="refreshCostAnalysis()" />
-    </label>
-    <label>
-      <span class="lab">Intervention cost <strong>${{ interventionCost() | number:'1.0-0' }}</strong></span>
-      <input type="range" min="0" max="10000" step="100" [value]="interventionCost()"
-             (input)="setInterventionCost($any($event.target).value)" (change)="refreshCostAnalysis()" />
-    </label>
-  </div>
-  @if (deployedStatic) {
-    <p class="small">Cost analysis requires the local Flask API.</p>
-  } @else if (costLoading() && !costAnalysis()) {
-    <p class="small" role="status">Calculating decision costs…</p>
-  } @else if (costAnalysis(); as analysis) {
-    <p class="cost-headline">
-      Optimal threshold:
-      <strong>{{ analysis.optimal_threshold >= 1 ? 'No action' : pct(analysis.optimal_threshold) + '%' }}</strong>
-      <span>Expected savings vs no action:
-        <strong>${{ analysis.expected_savings_vs_no_action | number:'1.0-0' }}</strong>
-      </span>
-    </p>
-    <svg viewBox="0 0 640 260" class="cost-chart" role="img"
-         aria-label="Estimated total cost by decision threshold, including the previous 35 and 60 percent risk bands">
-      <line x1="60" y1="25" x2="60" y2="210" class="chart-axis" />
-      <line x1="60" y1="210" x2="610" y2="210" class="chart-axis" />
-      <line [attr.x1]="costX(0.35)" y1="25" [attr.x2]="costX(0.35)" y2="210" class="chart-band" />
-      <line [attr.x1]="costX(0.60)" y1="25" [attr.x2]="costX(0.60)" y2="210" class="chart-band" />
-      <line [attr.x1]="costX(analysis.optimal_threshold)" y1="25"
-            [attr.x2]="costX(analysis.optimal_threshold)" y2="210" class="chart-optimal" />
-      <path [attr.d]="costPath()" class="cost-line" />
-      <text x="60" y="235" text-anchor="middle">5%</text>
-      <text [attr.x]="costX(0.35)" y="235" text-anchor="middle">35%</text>
-      <text [attr.x]="costX(0.60)" y="235" text-anchor="middle">60%</text>
-      <text x="610" y="235" text-anchor="middle">100%</text>
-      <text x="335" y="255" text-anchor="middle">Decision threshold</text>
-      <text x="12" y="18">Total cost ($)</text>
-    </svg>
-    <p class="small">Dashed lines mark the previous 0.35 and 0.60 risk bands; the dotted line marks the cost-optimal threshold. The 100% point is the no-action baseline.</p>
-  } @else if (costError()) {
-    <p class="error" role="alert">Cost analysis failed: {{ costError() }}</p>
-  }
-</section>
 
-@if (report(); as r) {
-  <section class="modelcard" aria-labelledby="mc-title">
-    <h2 id="mc-title">Model card</h2>
-    <p class="lede">
-      {{ r.dataset.rows }} employees sampled from the IBM HR dataset ({{ r.dataset.left }} left, {{ r.dataset.stayed }} stayed),
-      split {{ r.dataset.train_rows }} / {{ r.dataset.test_rows }} for training and testing. Both models are full scikit-learn pipelines,
-      tuned with 5-fold cross-validation. The champion is chosen on cross-validation, never on the test set.
-    </p>
- 
-    <div class="mc-grid">
-      <div class="table-scroll">
-        <table>
-          <caption class="sr">Model comparison on the held-out test set</caption>
-          <thead>
-            <tr>
-              <th scope="col">Metric</th>
-              @for (m of models(); track m[0]) {
-                <th scope="col" [class.champ]="m[0] === r.champion">{{ m[0] }}@if (m[0] === r.champion) { <small>champion</small> }</th>
-              }
-            </tr>
-          </thead>
-          <tbody>
-            <tr><th scope="row">Accuracy</th>@for (m of models(); track m[0]) { <td>{{ m[1].accuracy | number:'1.3-3' }}</td> }</tr>
-            <tr><th scope="row">ROC-AUC</th>@for (m of models(); track m[0]) { <td>{{ m[1].roc_auc | number:'1.3-3' }}</td> }</tr>
-            <tr><th scope="row">CV ROC-AUC</th>@for (m of models(); track m[0]) { <td>{{ m[1].cv_roc_auc | number:'1.3-3' }}</td> }</tr>
-            <tr><th scope="row">F1 (weighted)</th>@for (m of models(); track m[0]) { <td>{{ m[1].f1_weighted | number:'1.3-3' }}</td> }</tr>
-            <tr><th scope="row">Leavers caught (recall)</th>@for (m of models(); track m[0]) { <td>{{ m[1].recall_left | number:'1.3-3' }}</td> }</tr>
-            <tr><th scope="row">Leaver precision</th>@for (m of models(); track m[0]) { <td>{{ m[1].precision_left | number:'1.3-3' }}</td> }</tr>
-            <tr><th scope="row">Train minus test accuracy</th>@for (m of models(); track m[0]) { <td>{{ m[1].overfit_gap | number:'1.3-3' }}</td> }</tr>
-          </tbody>
-        </table>
+<main>
+  <!-- ============ HERO / OVERVIEW ============ -->
+  <section id="overview" class="hero">
+    <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+    <div class="wrap hero-inner">
+      <div class="hero-copy">
+        <span class="kicker">ML research reproduction · Flask · Angular · CI/CD</span>
+        <h1>Predict who might leave — <span class="grad">and what would help them stay.</span></h1>
+        <p class="hero-lede">
+          A leakage-free reproduction of Pratama et al. (2024) on the IBM HR dataset, extended with prescriptive retention actions,
+          cost-sensitive decisions and a department risk portfolio. Every number on this page is generated by the training pipeline.
+        </p>
+        <div class="hero-cta">
+          <a class="btn primary lg" href="#predict" (click)="go('predict', $event)">Try the predictor →</a>
+          <a class="btn glass lg" href="#research" (click)="go('research', $event)">See the research</a>
+        </div>
       </div>
- 
-      <div class="importance">
-        <h3>Strongest drivers across all employees</h3>
-        <ol>
-          @for (f of r.top_features; track f.feature) {
-            <li>
-              <span class="name">{{ f.label }}</span>
-              <span class="bar-wrap"><span class="bar up" [style.width.%]="(100 * f.importance) / maxImportance()"></span></span>
-              <span class="num">{{ (f.importance * 100) | number:'1.0-0' }}%</span>
-            </li>
-          }
-        </ol>
-        <p class="small">Permutation importance on the test set, grouped by raw feature.</p>
-      </div>
+      @if (report(); as r) {
+        <div class="hero-stats" reveal>
+          <div class="stat"><span class="stat-val" [countUp]="champ()!.accuracy" [percent]="true" [decimals]="1" suffix="%"></span><span class="stat-label">Test accuracy</span></div>
+          <div class="stat"><span class="stat-val" [countUp]="champ()!.roc_auc" [decimals]="3"></span><span class="stat-label">Test ROC-AUC</span></div>
+          <div class="stat"><span class="stat-val" [countUp]="nested()?.['accuracy']?.mean ?? 0" [percent]="true" [decimals]="1" suffix="%"></span><span class="stat-label">Nested-CV accuracy</span></div>
+          <div class="stat"><span class="stat-val" [countUp]="r.dataset.rows"></span><span class="stat-label">Employees</span></div>
+          <div class="stat wide"><span class="stat-label">Champion</span><span class="stat-name">{{ r.champion }}</span>
+            <span class="stat-label">{{ r.dataset.model_features }} model features · {{ r.dataset.engineered_features.length }} engineered</span></div>
+        </div>
+      }
     </div>
   </section>
-}
- 
-<footer class="foot">
-  Angular, Flask and scikit-learn. Tested and deployed with GitHub Actions. Educational prototype, not for real HR decisions.
+
+  @if (reportError()) {
+    <div class="wrap"><p class="alert">Could not load model-report.json. Run <code>python ml/train.py</code>.</p></div>
+  }
+
+  @if (report(); as r) {
+    @if (eda(); as e) {
+      <section class="wrap section" aria-labelledby="insights-title">
+        <div class="section-head" reveal>
+          <span class="eyebrow">Data insights</span>
+          <h2 id="insights-title">What the data says about attrition</h2>
+          <p class="muted">{{ r.dataset.rows }} employees, {{ r.dataset.left }} left ({{ pct(r.dataset.attrition_rate) }}). Bars show the share who left in each group;
+            <span class="t-bad">red</span> is well above the average, <span class="t-good">green</span> well below.</p>
+        </div>
+        <div class="bento">
+          <article class="card" reveal>
+            <h4>Who left?</h4>
+            <ui-donut [segments]="[{ label: 'Stayed', value: r.dataset.stayed, color: '#10B981' }, { label: 'Left', value: r.dataset.left, color: '#F43F5E' }]"
+                      [center]="pct(r.dataset.attrition_rate, 1)" caption="attrition" ariaLabel="Attrition share" />
+          </article>
+          <article class="card" reveal><h4>Overtime</h4><ui-bar-list [items]="e.overtime" [max]="0.5" /><h4 class="mt">Business travel</h4><ui-bar-list [items]="e.travel" [max]="0.5" /></article>
+          <article class="card" reveal><h4>Marital status</h4><ui-bar-list [items]="e.marital" [max]="0.5" /><h4 class="mt">Age category <small class="pill">engineered</small></h4><ui-bar-list [items]="e.age" [max]="0.5" /></article>
+          <article class="card span-2" reveal><h4>Job role</h4><ui-bar-list [items]="e.role" [max]="0.5" [compact]="true" /></article>
+          <article class="card" reveal><h4>Salary category <small class="pill">engineered</small></h4><ui-bar-list [items]="e.salary" [max]="0.5" /><h4 class="mt">Department</h4><ui-bar-list [items]="e.department" [max]="0.5" /></article>
+          <article class="card span-2" reveal>
+            <h4>Monthly income distribution — leavers earn less</h4>
+            <ui-grouped-bars [categories]="e.income.categories" [series]="e.income.series" [maxV]="e.income.max" [showValues]="false" ariaLabel="Income distribution" />
+          </article>
+          <article class="card" reveal><h4>Work-life balance</h4><ui-bar-list [items]="e.wlb" [max]="0.5" /></article>
+        </div>
+      </section>
+    }
+  }
+
+  <!-- ============ PREDICT ============ -->
+  <section id="predict" class="section band">
+    <div class="wrap">
+      <div class="section-head" reveal>
+        <span class="eyebrow">Live model</span>
+        <h2>Attrition risk predictor</h2>
+        <p class="muted">
+          @if (mode() === 'api') { Connected to the local Flask API (<code>/api/predict</code> → <code>127.0.0.1:5000</code>). }
+          @else if (mode() === 'browser') { Running the exported scikit-learn pipeline in your browser — numerically identical to the Flask API (verified by automated parity tests). }
+          @else { Connecting to a prediction engine… }
+        </p>
+      </div>
+      <app-predict [report]="report()" />
+    </div>
+  </section>
+
+  @if (report(); as r) {
+    <!-- ============ RESEARCH ============ -->
+    <section id="research" class="wrap section">
+      <div class="section-head" reveal>
+        <span class="eyebrow">Research</span>
+        <h2>Paper reproduction &amp; model evaluation</h2>
+        <p class="muted">{{ r.paper.citation }} <a [href]="r.paper.doi" target="_blank" rel="noopener">DOI ↗</a></p>
+      </div>
+      <app-research [report]="r" />
+    </section>
+
+    <!-- ============ NOVELTY ============ -->
+    <section id="novelty" class="section band novelty-band">
+      <div class="wrap">
+        <div class="section-head" reveal>
+          <span class="eyebrow">Our contribution</span>
+          <h2>Beyond the paper: from prediction to decision</h2>
+          <p class="muted">The paper stops at “who will leave”. This project adds what to do about it, when it is worth acting, and how trustworthy the evidence is.</p>
+        </div>
+        <app-novelty [report]="r" />
+      </div>
+    </section>
+
+    <!-- ============ METHOD / MODEL CARD ============ -->
+    <section id="method" class="wrap section">
+      <div class="section-head" reveal>
+        <span class="eyebrow">Method &amp; model card</span>
+        <h2>How it works</h2>
+      </div>
+      <ol class="pipeline" reveal>
+        <li><b>1</b><span>Data</span><small>IBM HR, {{ r.dataset.rows }} rows, 4 constant/ID columns dropped</small></li>
+        <li><b>2</b><span>Feature engineering</span><small>merge + 6 paper features, fitted on train only</small></li>
+        <li><b>3</b><span>Clean &amp; encode</span><small>median / mode imputation, one-hot, StandardScaler</small></li>
+        <li><b>4</b><span>80 / 20 split</span><small>stratified, seed 42, test untouched</small></li>
+        <li><b>5</b><span>Tune &amp; select</span><small>5-fold grid search, one-SE rule, nested CV</small></li>
+        <li><b>6</b><span>Decide</span><small>cost-sensitive threshold + recommendations</small></li>
+        <li><b>7</b><span>Serve</span><small>Flask API · in-browser engine · GitHub Pages</small></li>
+      </ol>
+      <div class="grid-2">
+        <article class="card" reveal>
+          <h4>Paper-engineered features</h4>
+          <table class="data compact">
+            <tbody>
+              <tr><td><code>Education_EducationField</code></td><td>Education level merged with field, e.g. “3_Medical”</td></tr>
+              <tr><td><code>Avg_Age_in_Department</code></td><td>Mean training age of the employee's department</td></tr>
+              <tr><td><code>Age_Category</code></td><td>Young &lt; 30 ≤ Middle-aged &lt; 45 ≤ Old</td></tr>
+              <tr><td><code>Tenure_Ratio</code></td><td>YearsAtCompany ÷ TotalWorkingYears</td></tr>
+              <tr><td><code>Experience_Per_Year</code></td><td>TotalWorkingYears ÷ Age</td></tr>
+              <tr><td><code>Salary_Category</code></td><td>Low / Medium / High by training tertiles of income</td></tr>
+              <tr><td><code>HourlyRate_Efficiency</code></td><td>DailyRate ÷ HourlyRate (implied paid hours/day)</td></tr>
+            </tbody>
+          </table>
+          <p class="muted small">Implemented as a fitted sklearn transformer inside the saved pipeline, so the API and the browser accept the 30 raw form values.</p>
+        </article>
+        <article class="card" reveal>
+          <h4>Limitations &amp; responsible use</h4>
+          <ul class="ticks">
+            <li>Single, synthetic-style public dataset; {{ r.dataset.left }} leavers limits minority-class precision.</li>
+            <li>Correlations, not causes: recommendations are model what-ifs, not guaranteed outcomes.</li>
+            <li>Protected attributes (age, gender, marital status) are inputs; a fairness audit is required before real use. They are never recommended for change.</li>
+            <li>Decision support only — never the sole basis for HR decisions; discuss support with the employee.</li>
+            <li>Cost figures are illustrative defaults ($15k replacement, $1.5k intervention).</li>
+          </ul>
+          <p class="muted small">Trained {{ r.trained_at }} · model v{{ r.model_version }} ·
+            @for (l of r.library_versions | keyvalue; track l.key) { {{ l.key }} {{ l.value }} · } </p>
+        </article>
+      </div>
+      <article class="card arch" reveal>
+        <h4>Deployment architecture (lab manual stages 4–14)</h4>
+        <div class="arch-flow">
+          <div class="node">Angular 21 SPA<small>localhost:4200</small></div><span class="arrow">/api →</span>
+          <div class="node">Dev proxy<small>proxy.conf.json</small></div><span class="arrow">→</span>
+          <div class="node accent">Flask REST API<small>/health /schema /report /predict /cost-analysis</small></div><span class="arrow">→</span>
+          <div class="node">sklearn Pipeline<small>model_bundle.joblib</small></div>
+        </div>
+        <div class="arch-flow">
+          <div class="node">git push</div><span class="arrow">→</span>
+          <div class="node">GitHub Actions<small>pytest · retrain · vitest · ng build</small></div><span class="arrow">→</span>
+          <div class="node accent">GitHub Pages<small>static SPA + in-browser engine</small></div>
+        </div>
+      </article>
+    </section>
+  }
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <span>231998 · Attrition Risk Console · Angular, Flask &amp; scikit-learn</span>
+    <span class="muted">Educational prototype — decision support only.</span>
+  </div>
 </footer>

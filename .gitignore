@@ -17,3 +17,5 @@ Thumbs.db
 !.vscode/tasks.json
 # Local logs
 *.log
+# Local Claude Code launch configs
+.claude/

@@ -1,0 +1,139 @@
+<div class="predict-grid">
+  <form class="card form-card" reveal (submit)="$event.preventDefault(); submit()" novalidate aria-label="Employee profile">
+    <div class="form-head">
+      <div>
+        <h3>Employee profile</h3>
+        <p class="muted">30 raw HR attributes. The 7 paper features are derived automatically.</p>
+      </div>
+      <div class="ring" [style.--p]="filled() / fields.length" role="status" [attr.aria-label]="filled() + ' of ' + fields.length + ' fields complete'">
+        <span>{{ filled() }}<small>/{{ fields.length }}</small></span>
+      </div>
+    </div>
+
+    <div class="presets" role="group" aria-label="Example profiles">
+      <span class="muted small">Try an example:</span>
+      <button type="button" class="chip-btn good" (click)="load('low_risk')">Low-risk</button>
+      <button type="button" class="chip-btn warn" (click)="load('medium_risk')">Medium-risk</button>
+      <button type="button" class="chip-btn bad" (click)="load('high_risk')">High-risk</button>
+      <button type="button" class="chip-btn" (click)="clear()">Clear</button>
+    </div>
+
+    <div class="tabs" role="tablist" aria-label="Feature groups">
+      @for (g of groups; track g.name) {
+        <button type="button" role="tab" class="tab" [class.active]="activeGroup() === g.name" [attr.aria-selected]="activeGroup() === g.name"
+                (click)="activeGroup.set(g.name)">
+          <span aria-hidden="true">{{ g.icon }}</span> {{ g.name }}
+          <span class="tab-count" [class.done]="groupFilled(g) === g.fields.length">{{ groupFilled(g) }}/{{ g.fields.length }}</span>
+        </button>
+      }
+    </div>
+
+    @for (g of groups; track g.name) {
+      <fieldset class="fields" [hidden]="activeGroup() !== g.name" role="tabpanel">
+        <legend class="sr">{{ g.name }}</legend>
+        @for (f of g.fields; track f.name) {
+          <label class="field">
+            <span class="field-label">{{ f.label }}@if (f.unit) { <small>{{ f.unit }}</small> }</span>
+            @if (f.kind === 'number') {
+              <input type="number" step="any" inputmode="decimal" [name]="f.name" [attr.min]="f.min" [attr.max]="f.max"
+                     [required]="f.required" [placeholder]="f.min + ' – ' + f.max"
+                     [value]="values()[f.name] ?? ''" (input)="set(f, $any($event.target).value)" />
+            } @else {
+              <select [name]="f.name" [required]="f.required" (change)="set(f, $any($event.target).value)">
+                <option value="" [selected]="values()[f.name] === null">Select…</option>
+                @for (o of f.options ?? []; track o.value) {
+                  <option [value]="o.value" [selected]="isSelected(f, o.value)">{{ o.label }}</option>
+                }
+              </select>
+            }
+          </label>
+        }
+      </fieldset>
+    }
+
+    @if (error()) { <p class="alert" role="alert">{{ error() }}</p> }
+
+    <div class="submit-row">
+      <button type="submit" class="btn primary" [disabled]="loading() || mode() === 'detecting' || mode() === 'unavailable'">
+        @if (loading()) { <span class="spinner" aria-hidden="true"></span> Predicting… } @else { Predict attrition risk → }
+      </button>
+      <span class="muted small">
+        @switch (mode()) {
+          @case ('api') { Sent to Flask <code>POST /predict</code> via the Angular proxy. }
+          @case ('browser') { Scored by the exported pipeline running in your browser. }
+          @case ('detecting') { Detecting prediction engine… }
+          @default { No prediction engine available. }
+        }
+      </span>
+    </div>
+  </form>
+
+  <aside class="card result-card" aria-live="polite" aria-label="Prediction result">
+    <ui-gauge [value]="result()?.probability_leave ?? null" [low]="low()" [high]="high()" />
+    @if (result(); as r) {
+      <div class="verdict" [attr.data-level]="r.risk_level">
+        <p class="big">{{ pct(r.probability_leave) }}<span>%</span></p>
+        <p class="level"><span class="dot"></span>{{ r.risk_level }} risk of leaving</p>
+        @if (previous() !== null) {
+          <p class="delta" [class.down]="r.probability_leave < previous()!">
+            {{ r.probability_leave < previous()! ? '▼' : '▲' }} {{ pct(previous()!) }}% → {{ pct(r.probability_leave) }}% after applying a suggestion
+          </p>
+        }
+        <p class="decision" [class.on]="r.action_recommended">
+          {{ r.action_recommended ? '✔ Retention action recommended' : '○ No action needed' }}
+          <small>cost-optimal threshold {{ pct(threshold()) }}%</small>
+        </p>
+        <p class="muted">{{ advice(r.risk_level) }}</p>
+      </div>
+
+      <section class="drivers">
+        <h4>What moved this estimate</h4>
+        <p class="muted small">Change in risk if each factor were set to a typical value.</p>
+        <ul>
+          @for (d of r.drivers; track d.feature) {
+            <li>
+              <span class="d-name">{{ d.label }} <em>{{ d.value }}</em></span>
+              <span class="d-track">
+                <span class="d-bar" [class.up]="d.impact > 0" [class.down]="d.impact < 0"
+                      [style.width.%]="(50 * (d.impact < 0 ? -d.impact : d.impact)) / maxImpact()"></span>
+              </span>
+              <span class="d-num" [class.up]="d.impact > 0">{{ d.impact > 0 ? '+' : '' }}{{ d.impact * 100 | number: '1.0-1' }}</span>
+            </li>
+          }
+        </ul>
+      </section>
+
+      @if (r.recommendations.length) {
+        <section class="recs">
+          <h4><span class="badge-novel">Novelty</span> Prescriptive retention actions</h4>
+          <p class="muted small">One-change what-if scenarios on HR-controllable factors. Protected attributes are never changed.</p>
+          @for (rec of r.recommendations; track rec.feature + rec.suggested_value) {
+            <div class="rec">
+              <div>
+                <strong>{{ labels[rec.feature] }}</strong>: {{ rec.current_value }} → <strong>{{ rec.suggested_value }}</strong>
+                <div class="muted small">risk −{{ rec.risk_reduction * 100 | number: '1.0-1' }} pts → {{ pct(rec.new_probability) }}% ({{ rec.new_risk_level }})</div>
+              </div>
+              <button type="button" class="btn ghost sm" (click)="apply(rec)">Apply & re-score</button>
+            </div>
+          }
+        </section>
+      } @else if (r.risk_level !== 'Low') {
+        <p class="muted small">No single HR-controllable change lowers this estimate.</p>
+      }
+      @if (applied().length) { <p class="muted small">Applied: {{ applied().join(', ') }}</p> }
+
+      <p class="meta">
+        <span class="engine-pill" [attr.data-engine]="r.engine">{{ r.engine === 'api' ? 'Flask API' : 'In-browser' }}</span>
+        {{ r.model }} v{{ r.model_version }} · {{ r.latency_ms }} ms
+      </p>
+      <p class="disclaimer">{{ r.disclaimer }}</p>
+    } @else if (loading()) {
+      <div class="skeleton"><span></span><span></span><span></span></div>
+    } @else {
+      <div class="empty">
+        <p class="big-muted">—</p>
+        <p class="muted">Fill in the profile or load an example to see the risk, its drivers and suggested actions.</p>
+      </div>
+    }
+  </aside>
+</div>

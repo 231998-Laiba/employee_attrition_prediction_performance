@@ -1,182 +1,105 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
-import { FEATURES, SAMPLES, Feature } from './feature-schema';
-import {
-  PredictionService,
-  PredictionResponse,
-  ModelReport,
-  CostAnalysisResponse,
-} from './prediction.service';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { KeyValuePipe } from '@angular/common';
+import { ModelReport, PredictionService } from './prediction.service';
+import { PredictSection } from './sections/predict';
+import { ResearchSection } from './sections/research';
+import { NoveltySection } from './sections/novelty';
+import { BarList, Donut, GroupedBars } from './ui/charts';
+import { CountUp, Reveal } from './ui/directives';
 
-
-type Seg = { d: string; color: string; label: string };
-const CX = 120, CY = 120, R = 98;
-const point = (f: number, r = R) => ({
-  x: CX - r * Math.cos(Math.PI * f),
-  y: CY - r * Math.sin(Math.PI * f),
-});
-const arc = (a: number, b: number) => {
-  const s = point(a), e = point(b);
-  return `M ${s.x.toFixed(2)} ${s.y.toFixed(2)} A ${R} ${R} 0 0 1 ${e.x.toFixed(2)} ${e.y.toFixed(2)}`;
-};
+type Theme = 'light' | 'dark';
 
 @Component({
   selector: 'app-root',
-  standalone: true,
-  imports: [DecimalPipe],
+  imports: [KeyValuePipe, PredictSection, ResearchSection, NoveltySection, BarList, Donut, GroupedBars, CountUp, Reveal],
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
-export class App implements OnInit {
+export class App implements OnInit, OnDestroy {
   private api = inject(PredictionService);
-
-  readonly fields = FEATURES;
-  readonly groups = [...new Set(FEATURES.map(f => f.group))].map(name => ({
-    name,
-    fields: FEATURES.filter(f => f.group === name),
-  }));
-  /** On GitHub Pages (or any non-local host) there is no Flask backend. */
-  readonly deployedStatic = !['localhost', '127.0.0.1'].includes(window.location.hostname);
-
-  readonly segments: Seg[] = [
-    { d: arc(0, 0.35), color: 'var(--stay)', label: 'Low' },
-    { d: arc(0.35, 0.6), color: 'var(--amber)', label: 'Medium' },
-    { d: arc(0.6, 1), color: 'var(--risk)', label: 'High' },
+  readonly mode = this.api.mode;
+  readonly isLocalHost = this.api.isLocalHost;
+  readonly nav = [
+    { id: 'overview', label: 'Overview' }, { id: 'predict', label: 'Predict' }, { id: 'research', label: 'Research' },
+    { id: 'novelty', label: 'Novelty' }, { id: 'method', label: 'Method' },
   ];
-  readonly ticks = [0, 0.25, 0.5, 0.75, 1].map(f => {
-    const a = point(f, R + 10), b = point(f, R + 3), t = point(f, R + 22);
-    return { x1: a.x, y1: a.y, x2: b.x, y2: b.y, tx: t.x, ty: t.y, text: Math.round(f * 100) + '%' };
+
+  report = signal<ModelReport | null>(null);
+  reportError = signal(false);
+  active = signal('overview');
+  theme = signal<Theme>('light');
+  menuOpen = signal(false);
+  scrolled = signal(false);
+  private io?: IntersectionObserver;
+  private onScroll = () => this.scrolled.set(window.scrollY > 24);
+
+  champ = computed(() => { const r = this.report(); return r ? r.models[r.champion] : null; });
+  nested = computed(() => { const r = this.report(); return r ? (r.nested_cv[r.champion] ?? Object.values(r.nested_cv)[0]) : null; });
+
+  eda = computed(() => {
+    const r = this.report();
+    if (!r) return null;
+    const bars = (key: string, map: (v: string | number) => string = v => String(v)) =>
+      [...r.eda[key]].sort((a, b) => b.rate - a.rate).map(x => ({
+        label: map(x.value), value: x.rate, display: `${(x.rate * 100).toFixed(1)}%`, note: `${x.left} of ${x.n} left`,
+        color: x.rate > r.dataset.attrition_rate * 1.3 ? 'var(--bad)' : x.rate < r.dataset.attrition_rate * 0.7 ? 'var(--good)' : 'var(--accent)',
+      }));
+    const h = r.eda.income_hist;
+    const share = (arr: number[]) => { const s = arr.reduce((a, b) => a + b, 0) || 1; return arr.map(v => v / s); };
+    return {
+      overtime: bars('OverTime', v => (v === 'Yes' ? 'Works overtime' : 'No overtime')),
+      department: bars('Department'),
+      marital: bars('MaritalStatus'),
+      role: bars('JobRole').slice(0, 9),
+      age: bars('Age_Category'),
+      salary: bars('Salary_Category', v => `${v} salary`),
+      travel: bars('BusinessTravel', v => String(v).replace('_', ' ')),
+      wlb: bars('WorkLifeBalance', v => ['', 'Bad', 'Good', 'Better', 'Best'][Number(v)] + ' WLB'),
+      income: {
+        categories: h.edges.slice(0, -1).map((e, i) => (i % 2 === 0 ? `$${Math.round(e / 1000)}k` : '')),
+        series: [{ name: 'Left (share)', color: '#F43F5E', values: share(h.left) }, { name: 'Stayed (share)', color: '#10B981', values: share(h.stayed) }],
+        max: Math.max(...share(h.left), ...share(h.stayed)) * 1.1,
+      },
+    };
   });
 
-  values = signal<Record<string, string | number | null>>(Object.fromEntries(FEATURES.map(f => [f.name, null])));
-  loading = signal(false);
-  error = signal('');
-  result = signal<PredictionResponse | null>(null);
-  report = signal<ModelReport | null>(null);
-  replacementCost = signal(15000);
-  interventionCost = signal(1500);
-  costAnalysis = signal<CostAnalysisResponse | null>(null);
-  costLoading = signal(false);
-  costError = signal('');
-  private costRequest = 0;
-
-  filled = computed(() => this.fields.filter(f => this.values()[f.name] !== null && this.values()[f.name] !== '').length);
-  needle = computed(() => -90 + 180 * (this.result()?.probability_leave ?? 0));
-  models = computed(() => Object.entries(this.report()?.models ?? {}));
-  maxImportance = computed(() => Math.max(...(this.report()?.top_features ?? [{ importance: 1 }]).map(f => f.importance)));
-  maxImpact = computed(() => Math.max(0.01, ...(this.result()?.drivers ?? []).map(d => Math.abs(d.impact))));
-  costScaleMax = computed(() => Math.max(1, ...(this.costAnalysis()?.cost_curve ?? []).map(point => point.total_cost)));
-  costPath = computed(() => (this.costAnalysis()?.cost_curve ?? [])
-    .map((point, index) => `${index ? 'L' : 'M'} ${this.costX(point.threshold)} ${this.costY(point.total_cost)}`)
-    .join(' '));
-
   ngOnInit() {
-    this.api.report().subscribe({ next: r => this.report.set(r), error: () => this.report.set(null) });
-    if (!this.deployedStatic) this.refreshCostAnalysis();
+    let saved: Theme | null = null;
+    try { saved = localStorage.getItem('theme') as Theme | null; } catch { /* storage unavailable */ }
+    this.applyTheme(saved ?? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+    this.api.init();
+    this.api.report().subscribe({ next: r => this.report.set(r), error: () => this.reportError.set(true) });
+    window.addEventListener('scroll', this.onScroll, { passive: true });
+    setTimeout(() => this.observeSections(), 300);
   }
 
-  setReplacementCost(raw: string) {
-    this.replacementCost.set(Number(raw));
+  ngOnDestroy() { this.io?.disconnect(); window.removeEventListener('scroll', this.onScroll); }
+
+  private observeSections() {
+    if (typeof IntersectionObserver === 'undefined') return;
+    this.io = new IntersectionObserver(entries => {
+      for (const e of entries) if (e.isIntersecting) this.active.set(e.target.id);
+    }, { rootMargin: '-45% 0px -50% 0px' });
+    for (const n of this.nav) { const el = document.getElementById(n.id); if (el) this.io.observe(el); }
   }
 
-  setInterventionCost(raw: string) {
-    this.interventionCost.set(Number(raw));
+  toggleTheme() { this.applyTheme(this.theme() === 'dark' ? 'light' : 'dark'); }
+  private applyTheme(t: Theme) {
+    this.theme.set(t);
+    document.documentElement.setAttribute('data-theme', t);
+    try { localStorage.setItem('theme', t); } catch { /* ignore */ }
   }
 
-  refreshCostAnalysis() {
-    const request = ++this.costRequest;
-    this.costLoading.set(true);
-    this.costError.set('');
-    this.api.costAnalysis(this.replacementCost(), this.interventionCost()).subscribe({
-      next: result => {
-        if (request !== this.costRequest) return;
-        this.costAnalysis.set(result);
-        this.costLoading.set(false);
-      },
-      error: err => {
-        if (request !== this.costRequest) return;
-        this.costError.set(err.error?.error ?? err.message);
-        this.costLoading.set(false);
-      },
-    });
+  switchEngine() {
+    if (this.mode() === 'api' && this.api.hasBrowserModel()) this.api.setMode('browser');
+    else if (this.mode() === 'browser' && this.isLocalHost) this.api.init();
   }
 
-  costX(threshold: number) {
-    return 60 + ((threshold - 0.05) / 0.95) * 550;
+  go(id: string, ev?: Event) {
+    ev?.preventDefault();
+    this.menuOpen.set(false);
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  costY(cost: number) {
-    return 210 - (cost / this.costScaleMax()) * 180;
-  }
-
-  set(field: Feature, raw: string) {
-    let v: string | number | null = raw === '' ? null : raw;
-    if (v !== null && (field.kind === 'number' || field.kind === 'ordinal')) v = Number(raw);
-    this.values.update(cur => ({ ...cur, [field.name]: v }));
-  }
-
-  isSelected(field: Feature, optionValue: string | number) {
-    return this.values()[field.name] === optionValue;
-  }
-
-  load(sample: 'low_risk' | 'high_risk') {
-    this.values.set({ ...this.values(), ...SAMPLES[sample] });
-    this.error.set('');
-  }
-
-  clear() {
-    this.values.set(Object.fromEntries(FEATURES.map(f => [f.name, null])));
-    this.result.set(null);
-    this.error.set('');
-  }
-
-  submit() {
-    this.error.set('');
-    this.result.set(null);
-    if (this.deployedStatic) {
-      this.error.set('Static GitHub Pages demo: run Flask and Angular locally to get predictions.');
-      return;
-    }
-    const payload: Record<string, string | number> = {};
-    for (const field of this.fields) {
-      const value = this.values()[field.name];
-      if (value === null || value === '') {
-        this.error.set(`Enter a value for "${field.label}".`);
-        return;
-      }
-      if (field.kind === 'number') {
-        const n = Number(value);
-        if (!Number.isFinite(n)) { this.error.set(`"${field.label}" must be a number.`); return; }
-        if ((field.min !== undefined && n < field.min) || (field.max !== undefined && n > field.max)) {
-          this.error.set(`"${field.label}" must be between ${field.min} and ${field.max}.`);
-          return;
-        }
-        payload[field.name] = n;
-      } else {
-        payload[field.name] = value as string | number;
-      }
-    }
-    this.loading.set(true);
-    this.api.predict(payload).subscribe({
-      next: r => { this.result.set(r); this.loading.set(false); },
-      error: err => {
-        const body = err.error;
-        const detail = body?.details?.join('; ') || body?.error || err.message;
-        this.error.set(err.status === 0 || err.status === 502 || err.status === 504
-          ? 'Cannot reach the Flask API. Start it with: python backend/app.py'
-          : `API error ${err.status}: ${detail}`);
-        this.loading.set(false);
-      },
-    });
-  }
-
-  pct(x: number) { return Math.round(x * 100); }
-  advice(level: string) {
-    return level === 'High'
-      ? 'Prioritise a retention conversation. Review workload, overtime and promotion timeline first.'
-      : level === 'Medium'
-        ? 'Worth a check-in. Several factors point toward risk but none is decisive.'
-        : 'Profile resembles employees who stay. Keep monitoring through normal reviews.';
-  }
+  pct(v: number | undefined | null, d = 1) { return v === null || v === undefined ? '–' : (v * 100).toFixed(d) + '%'; }
 }
-
