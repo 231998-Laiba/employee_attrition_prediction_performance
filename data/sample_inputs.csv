@@ -1,2 +1,2 @@
 Age,BusinessTravel,DailyRate,Department,DistanceFromHome,Education,EducationField,EnvironmentSatisfaction,Gender,HourlyRate,JobInvolvement,JobLevel,JobRole,JobSatisfaction,MaritalStatus,MonthlyIncome,MonthlyRate,NumCompaniesWorked,OverTime,PercentSalaryHike,PerformanceRating,RelationshipSatisfaction,StockOptionLevel,TotalWorkingYears,TrainingTimesLastYear,WorkLifeBalance,YearsAtCompany,YearsInCurrentRole,YearsSinceLastPromotion,YearsWithCurrManager
-34,Travel_Rarely,1320,Research & Development,20,3,Technical Degree,3,Female,89,4,1,Research Scientist,3,Married,2585,21643,0,No,17,3,4,0,2,5,2,1,0,0,0
+24,Non-Travel,830,Sales,13,2,Life Sciences,4,Female,78,3,1,Sales Representative,2,Married,2033,7103,1,No,13,3,3,1,1,2,3,1,0,0,0
