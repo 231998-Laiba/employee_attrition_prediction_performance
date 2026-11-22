@@ -1,0 +1,10 @@
+# Optional: host the Flask prediction API publicly on Render (https://render.com) using the Dockerfile.
+# One-time setup by the repository owner: Render dashboard -> New -> Blueprint -> select this repository.
+# The GitHub Pages site does not need this: it predicts in the browser with the exported pipeline.
+services:
+  - type: web
+    name: attrition-risk-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health

@@ -1,61 +1,148 @@
 # Attrition Risk Console
 
-**An end-to-end MLOps project:** train and package an employee-attrition model, serve it through a validated Flask REST API, use it from an Angular dashboard, and test, build and publish everything automatically with GitHub Actions.
+**Leakage-free reproduction of a published employee-attrition study, extended from *prediction* to *decision*, and shipped as a tested full-stack application.**
+scikit-learn pipeline → Flask REST API → Angular 21 dashboard → GitHub Actions CI → GitHub Pages (with in-browser predictions).
 
-[![CI](https://github.com/YOUR_USERNAME/YOUR_REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/YOUR_REPO/actions/workflows/ci.yml)
-[![Pages](https://github.com/YOUR_USERNAME/YOUR_REPO/actions/workflows/pages.yml/badge.svg)](https://github.com/YOUR_USERNAME/YOUR_REPO/actions/workflows/pages.yml)
+[![CI](https://github.com/231998-Laiba/employee_attrition_prediction_performance/actions/workflows/ci.yml/badge.svg)](https://github.com/231998-Laiba/employee_attrition_prediction_performance/actions/workflows/ci.yml)
+[![Pages](https://github.com/231998-Laiba/employee_attrition_prediction_performance/actions/workflows/pages.yml/badge.svg)](https://github.com/231998-Laiba/employee_attrition_prediction_performance/actions/workflows/pages.yml)
 
 | | |
 |---|---|
-| **Live static demo (GitHub Pages)** | https://YOUR_USERNAME.github.io/YOUR_REPO/ |
-| **Repository** | https://github.com/YOUR_USERNAME/YOUR_REPO |
+| **Live site (GitHub Pages)** | https://231998-laiba.github.io/employee_attrition_prediction_performance/ |
+| **Repository** | https://github.com/231998-Laiba/employee_attrition_prediction_performance |
+| **Reproduced paper** | Pratama, Fatchan & Hadikristanto (2024). *Improving Employee Retention Through Prediction and Risk Management Using Machine Learning.* IJARSS 2(6), 475–484. [doi:10.59890/ijarss.v2i6.1960](https://doi.org/10.59890/ijarss.v2i6.1960) |
 | **Task** | Binary classification: will an employee leave (`Attrition` = Yes/No)? |
-| **Data** | IBM HR Analytics Employee Attrition (public), stratified sample of 500 rows, 30 raw features |
-| **Champion model** | Logistic Regression pipeline (test ROC-AUC 0.89, recall on leavers 0.88) |
+| **Data** | IBM HR Analytics Employee Attrition & Performance: all 1,470 employees (237 leavers, 16.1%), 30 raw inputs + 7 paper-engineered features |
+| **Champion** | L1-regularised Logistic Regression in one fitted sklearn `Pipeline` (model v2.0.0) |
+| **Headline (honest)** | Test accuracy **88.8%** (95% CI 85.0–92.2%), nested-CV accuracy **88.4% ± 1.3%**, test ROC-AUC **0.822**, nested-CV ROC-AUC **0.834** |
 
-> **Deployment boundary.** GitHub Pages serves static files only. The public site shows the dashboard and live model card, but the prediction button is intentionally disabled there. Predictions run when Flask and Angular run locally (or on a separately hosted backend, see the Dockerfile).
+> **Deployment boundary (lab manual Stage 14).** GitHub Pages serves static files only and never runs Python. The live site predicts with a JSON export of the fitted pipeline that runs in the browser. Automated parity tests show it matches the Python pipeline to within 1e-9. Locally, the same UI calls the Flask API through the Angular dev proxy. The badge in the top bar shows which engine is active.
 
-## Architecture
+---
+
+## 1. Research results
+
+### 1.1 Reproducing the paper: method
+`ml/train.py` implements the paper's pipeline exactly:
+- **Feature merging:** `Education_EducationField`.
+- **Six engineered features:** `Avg_Age_in_Department`, `Age_Category`, `Tenure_Ratio`, `Experience_Per_Year`, `Salary_Category`, `HourlyRate_Efficiency`.
+- **Cleaning:** drop `EmployeeCount`, `Over18`, `StandardHours` (plus the `EmployeeNumber` ID); median imputation.
+- **Encoding and scaling:** one-hot encoding of the categorical columns; `StandardScaler`.
+- **Split and models:** 80/20 `train_test_split`; Logistic Regression (`max_iter=1000`) and a default Random Forest.
+- **Evaluation:** overall and per department, in the paper's Table 1 layout.
+
+The feature engineering is a fitted transformer (`backend/attrition_features.py`). Department mean ages and salary tertiles are learned from the training rows only.
+
+### 1.2 Reproducing the paper: per-department accuracy
+
+| Per-department accuracy | HR | R&D | Sales | Mean |
+|---|---|---|---|---|
+| Paper, Random Forest (reported) | 0.994 | 0.979 | 0.983 | **0.977** |
+| Our **correct** reproduction, RF | 0.867 | 0.843 | 0.817 | **0.842** |
+| Our **leaky** reproduction, RF (oversample before split) | 0.966 | 0.955 | 0.948 | **0.956** |
+| Paper, Logistic Regression (reported) | 0.971 | 0.946 | 0.967 | 0.946 |
+| Our correct reproduction, LR | 0.867 | 0.868 | 0.854 | 0.863 |
+
+**Finding: leakage audit.** The paper's near-perfect Random Forest scores (accuracy 0.98–0.99, AUC up to 0.997) appear **only** when leavers are oversampled *before* the split. That leakage gives RF an AUC of 0.997. In that protocol, 49% of "test" rows and 98% of test leavers are exact copies of training rows, so the forest is graded on employees it memorised.
+
+The leaky protocol does **not** reproduce the paper's LR figures (leaky LR gets about 0.81, because a linear model cannot memorise duplicates). Those figures remain unexplained.
+
+The paper's discussion also reports LR "precision 0.89, recall 0.67, F1 0.42". These are mutually inconsistent: that precision and recall imply F1 ≈ 0.76. Chart: `docs/charts/8_paper_vs_reproduction.png`.
+
+### 1.3 Optimised, leakage-free models
+How they were trained and selected:
+- **Preprocessing:** same as the paper.
+- **Tuning:** `GridSearchCV` with 5-fold stratified CV (ROC-AUC) on the 1,176 training rows only.
+- **Champion selection:** the one-standard-error rule. Among models within one SE of the best CV AUC, the simplest wins. The test set never influences any choice.
+
+| Held-out test set (294 rows) | **Logistic Regression** ★ | Random Forest | Gradient Boosting | Stacking (nested ensemble) |
+|---|---|---|---|---|
+| CV ROC-AUC (train) | 0.844 ± 0.026 | 0.813 | 0.818 | 0.846 |
+| CV accuracy | 0.884 | 0.862 | 0.876 | 0.884 |
+| **Test accuracy** | **0.888** | 0.823 | 0.857 | 0.888 |
+| Test ROC-AUC | 0.822 | 0.780 | 0.801 | 0.822 |
+| PR-AUC | 0.624 | 0.413 | 0.533 | 0.616 |
+| Weighted F1 | 0.870 | 0.779 | 0.825 | 0.870 |
+| Precision / recall (leavers @0.5) | 0.818 / 0.383 | 0.308 / 0.085 | 0.667 / 0.213 | 0.818 / 0.383 |
+| Specificity | 0.984 | 0.964 | 0.980 | 0.984 |
+| MCC | 0.511 | 0.087 | 0.321 | 0.511 |
+| Train − test accuracy | **+0.009** | +0.071 | +0.071 | +0.035 |
+
+Validity checks:
+- **Nested CV (5×2 outer):** accuracy 0.884 ± 0.013, ROC-AUC 0.834 ± 0.030.
+- **Bootstrap 95% CI on the test set:** accuracy 0.850–0.922, ROC-AUC 0.742–0.894.
+- **Majority-class baseline:** 0.840 accuracy.
+- **Old 500-row protocol:** 0.920 test accuracy, but its CV AUC is only 0.799 and the test set has just 100 rows, so that result is noise. The project now uses the full dataset, as the paper does.
+
+### 1.4 Performance target (>90%, never below 75%): honest assessment
+
+| Metric (champion) | Value | vs 75% floor | vs 90% target |
+|---|---|---|---|
+| Test accuracy | 88.8% | ✅ | ✗ (CI upper bound 92.2%) |
+| Nested-CV accuracy | 88.4% | ✅ | ✗ |
+| Specificity | 98.4% | ✅ | ✅ |
+| Weighted F1 | 87.0% | ✅ | ✗ |
+| ROC-AUC (test / nested) | 82.2% / 83.4% | ✅ | ✗ |
+| Recall / F1 on leavers @0.5 | 38.3% / 52.2% | ✗ | ✗ |
+
+**Why 90% is not reached without cheating:**
+- Only 16% of employees leave. Predicting "stays" for everyone already scores 84%.
+- A strongly tuned linear model, three non-linear models and a stacking ensemble all plateau at about 0.83–0.85 AUC under correct validation. That is the information ceiling of these 30 attributes.
+- Every route to >95% that we found (oversampling before the split, evaluating on training rows, selecting on the test set) is data leakage, so we report the leakage instead of the inflated number.
+- Minority-class recall is a threshold choice. The cost-sensitive threshold below raises recall to 81% at the expense of accuracy.
+
+## 2. Novel contributions (beyond the paper)
+1. **Prescriptive retention actions.** For Medium/High-risk employees, the system tests one-change what-if scenarios on HR-controllable factors: overtime, travel, stock options, salary hike, training, work-life balance and job satisfaction. It returns the strongest distinct action per factor, up to three. Protected attributes are never changed. In the UI, **Apply & re-score** shows the effect live (example: 95% → 80% by removing overtime).
+2. **Cost-sensitive decisions.** The action threshold minimises expected cost ($15k per missed leaver, $1.5k per intervention, both adjustable). It is chosen from out-of-fold *training* predictions, then validated on the test set:
+   - threshold 0.10: **$270k**
+   - default 0.50: $441k
+   - no action: $705k
+   - leavers caught: 81% at 0.10 vs 38% at 0.50
+3. **Leakage audit** of the published results (section 1.2): a controlled experiment that explains the paper's Random Forest scores.
+4. **Department risk portfolio** (the paper's "risk management" idea): risk bands per department on the held-out set. 24 of 47 actual leavers fall in the Medium/High bands.
+5. **Serverless in-browser engine.** The fitted pipeline is exported to JSON and re-implemented in TypeScript. Parity tests run in both pytest and vitest, so the public site gives real predictions.
+
+## 3. Architecture
 
 ```mermaid
 flowchart LR
-  A[Angular form<br/>localhost:4200] -- POST /api/predict --> B[Angular dev proxy]
-  B --> C[Flask API<br/>127.0.0.1:5000]
-  C --> D[Schema validation]
-  D --> E[Fitted sklearn Pipeline<br/>impute/scale/encode + model]
-  E --> F[probability, risk level,<br/>top drivers]
-  F --> A
-  G[git push] --> H[GitHub Actions CI<br/>pytest + train + ng build]
-  G --> I[GitHub Pages<br/>static Angular only]
+  A[Angular SPA<br/>localhost:4200] -- /api/* --> B[Angular dev proxy]
+  B --> C[Flask API 127.0.0.1:5000<br/>validation]
+  C --> D[sklearn Pipeline<br/>engineer → impute/scale/one-hot → LR]
+  D --> E[probability · risk band · drivers<br/>recommendations · cost decision]
+  E --> A
+  F[ml/train.py] --> G[model_bundle.joblib]
+  F --> H[model-report.json · charts]
+  F --> I[model-browser.json<br/>+ parity fixtures]
+  I --> J[GitHub Pages SPA<br/>in-browser inference]
+  K[git push] --> L[Actions CI: pytest · retrain · pytest · vitest · ng build]
+  K --> M[Pages workflow: ng build → deploy]
 ```
 
-## What makes this more than a notebook
+**Single source of truth.** `ml/train.py` writes all of these together, so they cannot drift apart:
+- the Flask bundle;
+- the API schema;
+- the Angular `feature-schema.ts`;
+- the model report used by the dashboards;
+- the browser model and its parity fixtures.
 
-- **One fitted Pipeline.** Scaling and one-hot encoding live inside the pipeline, so the API accepts the *raw* 30 form values. No preprocessing is refitted at prediction time.
-- **Honest model selection.** Both models are tuned with 5-fold stratified cross-validation on the training split only. The champion is chosen on CV ROC-AUC, never on the test set.
-- **Single source of truth.** `ml/train.py` writes the model bundle, the API schema and the Angular `feature-schema.ts`, so frontend and backend cannot drift apart.
-- **Defensive API.** Rejects missing or extra fields, wrong types, out-of-range numbers and unknown categories with clear 400 errors.
-- **Explainable result.** Every prediction returns the five factors that moved the estimate most (model-agnostic what-if against typical values).
-- **16 automated tests** for the API and recommendations, plus CI that retrains the model from scratch and re-runs the tests.
-
-## Project structure
-
+## 4. Project structure
 ```
-backend/        Flask API, tests, model bundle, helper scripts
-  app.py  recommendations.py  make_payload.py  test_pipeline.py  test_api.py  requirements.txt
-  models/model_bundle.joblib      fitted pipeline + feature list + schema
-  tests/                           pytest suite (16 tests)
-ml/train.py     reproducible training, evaluation, charts, schema export
-data/           HR dataset + non-sensitive sample record
-frontend/       Angular app (proxy.conf.json, feature-schema.ts generated)
-docs/           technical report, model report, charts, environment record
-.github/workflows/  ci.yml, pages.yml
-Dockerfile  run_local.ps1  .vscode/tasks.json
+backend/   app.py (Flask)  attrition_features.py (paper features)  recommendations.py  cost_analysis.py
+           make_payload.py  test_pipeline.py  test_api.py  requirements.txt
+           models/model_bundle.joblib      tests/ (28 pytest tests incl. parity_fixtures.json)
+ml/train.py   replication · leakage audit · tuning · nested CV · cost threshold · exports · charts
+data/      IBM HR CSV + one non-sensitive sample record
+frontend/  Angular 21 standalone app
+           src/app/engine/   browser-model.ts (+ 7 vitest parity tests)
+           src/app/sections/ predict · research · novelty      src/app/ui/ SVG charts, directives
+           public/model-report.json  public/model-browser.json   proxy.conf.json
+docs/      TECHNICAL_REPORT.md  model_report.json  charts/ (9 figures)  environment.txt
+.github/workflows/  ci.yml  pages.yml        Dockerfile  render.yaml  run_local.ps1
 ```
 
-## Run it locally (Windows, PowerShell)
-
-Prerequisites: Python 3.12, Node.js 22 LTS or newer, Git. Versions used are in `docs/environment.txt`.
+## 5. Run locally (Windows PowerShell)
+Prerequisites: Python 3.12+ (developed on 3.14, CI uses 3.12), Node.js 20.19+ or 22 LTS, Git. Recorded versions: `docs/environment.txt`.
 
 ```powershell
 # 1. Backend environment
@@ -63,109 +150,58 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r backend\requirements.txt
 
-# 2. (Optional) retrain: regenerates model, charts, schema, report
+# 2. (Optional) retrain: replication, leakage audit, tuning, nested CV, exports (about 4 min)
 python ml\train.py
 
-# 3. Verify the model, then the API tests
+# 3. Verify the model and run the tests
 python backend\make_payload.py
-python backend\test_pipeline.py          # expect: PASS: local inference
-python -m pytest -q backend\tests        # expect: 16 passed
+python backend\test_pipeline.py              # PASS: local inference
+python -m pytest -q backend\tests            # 28 passed
 
 # 4. Terminal 1 - Flask (keep open)
-python backend\app.py                    # http://127.0.0.1:5000/health
+python backend\app.py                        # http://127.0.0.1:5000/health
 
-# 5. Terminal 2 - Angular (keep open)
+# 5. Terminal 2 - Angular with proxy (keep open)
 cd frontend
 npm ci
-npm start                                # ng serve with the proxy; http://localhost:4200
+npm start                                    # http://localhost:4200
+npx ng test --watch=false                    # 7 passed (browser-engine parity)
 
-# 6. Terminal 3 - extra checks
+# 6. Terminal 3 - checks through the proxy
 curl.exe --noproxy "*" -i http://localhost:4200/api/health
-python backend\test_api.py               # needs Flask running
+python backend\test_api.py
 ```
+Shortcut: `.\run_local.ps1`. If Flask is not running, the UI falls back to the in-browser engine automatically, and you can switch engines with the badge in the top bar.
 
-Shortcut: `.\run_local.ps1` does steps 1, 4 and 5 for you.
-
-## API
-
+## 6. API
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/health` | Liveness, model name and version, feature count |
-| GET | `/schema` | Names, types, ranges and allowed categories of all 30 inputs |
-| GET | `/report` | Training metrics and top features |
-| GET/POST | `/cost-analysis` | Optional `replacement_cost` and `intervention_cost`; returns the optimal threshold, expected savings vs no action, and cost curve |
-| POST | `/predict` | JSON with all 30 raw features, returns prediction, `probability_leave`, `risk_level`, `action_recommended`, `drivers`, `recommendations` |
+| GET | `/health` | Liveness, model name/version, feature count |
+| GET | `/schema` | Names, types, ranges and allowed categories of the 30 raw inputs |
+| GET | `/report` | Full research report (replication, leakage audit, models, CV, costs) |
+| GET/POST | `/cost-analysis` | Optional `replacement_cost`, `intervention_cost`; returns optimal threshold, savings, cost curve |
+| POST | `/predict` | 30 raw features. Returns `prediction`, `probability_leave`, `risk_level`, `action_recommended`, `drivers`, `recommendations` |
 
-Risk bands on the leaving probability: **Low** below 0.35, **Medium** 0.35 to 0.60, **High** from 0.60.
+Validation rejects missing or extra fields, wrong types, out-of-range numbers and unknown categories with clear 400 errors. Risk bands: Low < 0.35 ≤ Medium < 0.60 ≤ High.
 
-## From prediction to decision
+## 7. Testing and CI/CD
+- **pytest (28):**
+  - API positive and negative cases, plus a behavioural sanity check;
+  - cost analysis;
+  - recommendations: only lower risk, protected attributes excluded, schema-valid, distinct;
+  - paper feature formulas and leakage safety (statistics learned from fit data only);
+  - report integrity;
+  - **Python ↔ browser export parity**;
+  - repository structure.
+- **vitest (7):** the TypeScript engine reproduces sklearn probabilities to within 1e-6, plus engineered features, validation, recommendations and cost logic.
+- **`ci.yml`:** pytest → retrain from scratch → pytest on the fresh bundle → vitest → production `ng build`, with artifacts uploaded.
+- **`pages.yml`:** production build with `--base-href /<repo>/`, then deploy to GitHub Pages. One-time setup: Settings → Pages → Source: GitHub Actions.
+- **Optional public API:** `render.yaml` + `Dockerfile` (gunicorn). The repository owner must connect it on Render; the Pages site does not need it.
 
-The default decision threshold minimizes false-negative replacement costs and false-positive intervention costs over 5-fold out-of-fold predictions on the training split only (defaults: $15,000 and $1,500). The bundle stores the threshold and cost curve; the dashboard sliders recalculate costs through `/cost-analysis`. `/predict` reports `action_recommended` using the saved default threshold. The held-out test set is not used to select the threshold; cost estimates are illustrative, not guarantees.
+## 8. Limitations and ethics
+- One public dataset, and its realism is uncertain. With 237 leavers, minority-class precision is limited.
+- The model finds correlations, not causes. Recommendations are model what-ifs, not guarantees.
+- Protected attributes (age, gender, marital status) are model inputs. A fairness audit is needed before any real use, and these attributes are never suggested for change.
+- Decision support only: never use it as the sole basis for HR decisions, and discuss support with the employee.
 
-## Novel contribution: Retention recommendations
-
-For Medium- and High-risk predictions, the API tests one-at-a-time alternatives for selected HR-controllable features and returns up to three changes that lower the model's estimated probability of leaving. Protected attributes are never changed. These are model-based suggestions, not guarantees or instructions to change an employee's circumstances; discuss appropriate support with the employee.
-
-Example portion of a `POST /predict` response:
-
-```json
-{
-  "risk_level": "High",
-  "recommendations": [
-    {
-      "feature": "OverTime",
-      "current_value": "Yes",
-      "suggested_value": "No",
-      "new_probability": 0.421,
-      "risk_reduction": 0.184,
-      "new_risk_level": "Medium"
-    }
-  ]
-}
-```
-
-## Results (held-out test set, 100 employees)
-
-| Metric | Logistic Regression | Random Forest |
-|---|---|---|
-| Accuracy | 0.830 | 0.840 |
-| ROC-AUC | **0.890** | 0.885 |
-| Cross-validated ROC-AUC | **0.778** | 0.758 |
-| Recall on leavers | **0.875** | 0.688 |
-| Precision on leavers | 0.483 | 0.500 |
-| Train minus test accuracy | -0.037 | +0.033 |
-
-Neither model overfits (gaps are small). Logistic Regression wins on cross-validation and catches more leavers, which matters most for retention work. Charts are in `docs/charts/`; the full write-up is in [`docs/TECHNICAL_REPORT.md`](docs/TECHNICAL_REPORT.md).
-
-![ROC](docs/charts/4_roc_curves.png)
-![Drivers](docs/charts/6_feature_importance.png)
-
-## CI/CD
-
-- **`ci.yml`** runs on every push and pull request: installs pinned dependencies, runs all backend tests, retrains the model end-to-end, re-tests, and builds Angular (uploading both as artifacts).
-- **`pages.yml`** builds Angular for production and deploys `frontend/dist/frontend/browser` to GitHub Pages. The `--base-href` is taken from the repository name automatically.
-- One-time setup: GitHub repo, **Settings, Pages, Source: GitHub Actions**.
-
-## Docker (optional hosted backend)
-
-```bash
-docker build -t attrition-api .
-docker run -p 5000:5000 attrition-api
-```
-
-## Troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| `node` / `ng` not recognized | Close all VS Code windows, reopen, new terminal. Try `ng.cmd`. |
-| PowerShell blocks `Activate.ps1` | `Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned` |
-| Angular shows "Cannot reach the Flask API" | Start Flask first; start Angular with `npm start` (uses `proxy.conf.json`) |
-| `/api/health` returns 404 | Angular was started without the proxy. Restart with `npm start`. |
-| HTTP 502 on localhost from Python | `requests.Session()` with `trust_env = False` (already in `test_api.py`) |
-| Pages shows a blank page or 404 | Pages source must be GitHub Actions; check the deploy log and base-href |
-| Pickle load error | Use the pinned versions in `backend/requirements.txt` |
-
-## Limitations and ethics
-
-The model is trained on 500 employees from a public, partly synthetic dataset and evaluated on 100, so scores carry wide uncertainty (cross-validated AUC 0.78 is the more cautious estimate). Precision on leavers is about 0.5: roughly half of the people flagged will not actually leave. Use it as a conversation starter for retention support, never to penalise or select individuals. Protected attributes such as age, gender and marital status are in the data; a production system would need a fairness review.
-github user_name="231998-Laiba" and repo:employee_attrition_prediction_performance
+Full write-up: [`docs/TECHNICAL_REPORT.md`](docs/TECHNICAL_REPORT.md).
